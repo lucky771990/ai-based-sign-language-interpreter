@@ -17,7 +17,8 @@ import {
   Maximize2,
   Minimize2,
   Zap,
-  Layers
+  Layers,
+  ExternalLink
 } from 'lucide-react';
 
 interface CameraPanelProps {
@@ -272,11 +273,11 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
                   'Camera access is required to translate ASL. Please allow camera access in your browser settings and try again.'}
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-1">
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
               <button
                 id="camera-try-again-button"
                 onClick={onStartCameraAndTranslation}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Try Again</span>
@@ -284,11 +285,22 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
               <button
                 id="camera-permission-guide-button"
                 onClick={onOpenPermissionGuide}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <HelpCircle className="w-3.5 h-3.5 text-purple-400" />
                 <span>How to Unblock</span>
               </button>
+              {typeof window !== 'undefined' && window.self !== window.top && (
+                <a
+                  href={window.location.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Open in New Tab</span>
+                </a>
+              )}
             </div>
           </div>
         )}

@@ -9,24 +9,37 @@ import {
   ArrowRight,
   BookOpen,
   Info,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  HelpCircle,
+  ExternalLink
 } from 'lucide-react';
 import { ASL_REFERENCE_SIGNS } from '../data/aslReferenceData';
+import { CameraPermissionState } from '../types';
 
 interface LandingHeroProps {
   onStartCamera: () => void;
   onOpenReference: () => void;
   onOpenHowItWorks: () => void;
+  onOpenPermissionGuide?: () => void;
   isRequesting: boolean;
+  cameraPermission?: CameraPermissionState;
+  permissionError?: string | null;
 }
 
 export const LandingHero: React.FC<LandingHeroProps> = ({
   onStartCamera,
   onOpenReference,
   onOpenHowItWorks,
+  onOpenPermissionGuide,
   isRequesting,
+  cameraPermission,
+  permissionError,
 }) => {
   const previewSigns = ASL_REFERENCE_SIGNS.slice(0, 6);
+  const isDenied = cameraPermission === 'denied' || cameraPermission === 'blocked';
+  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 py-8 sm:py-12 space-y-12">
@@ -47,6 +60,50 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
         <p className="text-lg sm:text-xl text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
           Allow camera access, sign naturally, and see your signs translated into clear English text in real time.
         </p>
+
+        {/* Permission Denied Recovery Banner if triggered */}
+        {isDenied && (
+          <div className="max-w-xl mx-auto p-4 sm:p-5 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-left space-y-3 shadow-xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2.5 text-rose-300 font-bold text-sm">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+              <span>Camera Permission Required</span>
+            </div>
+            <p className="text-xs text-rose-200/90 leading-relaxed">
+              {permissionError ||
+                'The browser or operating system blocked camera access. To use ASL translation, click the lock/camera icon in your browser address bar to allow camera access.'}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                id="landing-retry-camera-btn"
+                onClick={onStartCamera}
+                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Try Again</span>
+              </button>
+              {onOpenPermissionGuide && (
+                <button
+                  onClick={onOpenPermissionGuide}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 text-purple-400" />
+                  <span>How to Allow Camera</span>
+                </button>
+              )}
+              {isInIframe && (
+                <a
+                  href={window.location.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Open in New Tab</span>
+                </a>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Primary CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">

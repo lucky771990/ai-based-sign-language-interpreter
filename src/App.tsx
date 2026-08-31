@@ -13,7 +13,7 @@ import {
   CameraSettings,
   ServerHealthStatus
 } from './types';
-import { aslRecognitionService } from './services/aslRecognitionService';
+import { aslRecognitionService, getApiBaseUrl } from './services/aslRecognitionService';
 import { speechService } from './services/speechService';
 import { Header } from './components/Header';
 import { LandingHero } from './components/LandingHero';
@@ -76,11 +76,15 @@ export default function App() {
   useEffect(() => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const baseUrl = getApiBaseUrl();
+    const endpoint = `${baseUrl}/api/health`;
 
-    fetch('/api/health', { signal: controller.signal })
+    fetch(endpoint, { signal: controller.signal })
       .then(async (res) => {
         clearTimeout(timeoutId);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
         const text = await res.text();
         return JSON.parse(text);
       })
@@ -89,12 +93,12 @@ export default function App() {
           setServerHealth(data);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         clearTimeout(timeoutId);
         // Non-blocking fallback for static hosting (e.g. GitHub Pages)
         setServerHealth({
           status: 'static_client',
-          geminiConfigured: Boolean(localStorage.getItem('user_gemini_api_key')),
+          geminiConfigured: false,
           model: 'gemini-3.7-flash',
         });
       });
@@ -518,7 +522,10 @@ export default function App() {
               const el = document.getElementById('how-it-works-section');
               el?.scrollIntoView({ behavior: 'smooth' });
             }}
+            onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
             isRequesting={cameraPermission === 'requesting'}
+            cameraPermission={cameraPermission}
+            permissionError={permissionError}
           />
         ) : (
           /* Main Interactive Studio Screen */
