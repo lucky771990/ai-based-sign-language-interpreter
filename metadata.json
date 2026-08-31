@@ -1,0 +1,7 @@
+{
+  "name": "ASL Translate",
+  "description": "Translate American Sign Language (ASL) into English text using live camera vision and Gemini AI.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
