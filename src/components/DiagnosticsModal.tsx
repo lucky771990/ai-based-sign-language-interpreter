@@ -4,7 +4,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Server,
+  Key,
   Shield,
   Video,
   Volume2,
@@ -12,11 +12,10 @@ import {
   RefreshCw,
   X,
   Copy,
-  Check,
-  ExternalLink
+  Check
 } from 'lucide-react';
 import { AppState, ServerHealthStatus } from '../types';
-import { getApiBaseUrl } from '../services/aslRecognitionService';
+import { aslRecognitionService } from '../services/aslRecognitionService';
 import { speechService } from '../services/speechService';
 
 interface DiagnosticsModalProps {
@@ -33,85 +32,43 @@ export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = ({
   serverHealth,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [customApiUrl, setCustomApiUrl] = useState(() => {
-    return typeof window !== 'undefined' ? localStorage.getItem('asl_backend_api_url') || '' : '';
+  const [apiKey, setApiKey] = useState(() => {
+    return localStorage.getItem('user_gemini_api_key') || '';
   });
-  const [testStatus, setTestStatus] = useState<{
-    testing: boolean;
-    success?: boolean;
-    message?: string;
-  }>({ testing: false });
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const currentApiBase = getApiBaseUrl() || (typeof window !== 'undefined' ? window.location.origin : '');
   const isSecure = typeof window !== 'undefined' ? window.isSecureContext : false;
   const hasCameraApi = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
   const hasSpeechApi = speechService.isSupported();
   const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const isStaticHost = !serverHealth.status.includes('online') && serverHealth.status !== 'ready_backend';
 
-  const handleSaveApiUrl = () => {
-    if (customApiUrl.trim()) {
-      localStorage.setItem('asl_backend_api_url', customApiUrl.trim().replace(/\/+$/, ''));
-      setTestStatus({
-        testing: false,
-        success: true,
-        message: 'Saved custom backend API URL. Testing connection...'
-      });
-      runHealthCheck(customApiUrl.trim().replace(/\/+$/, ''));
+  const handleSaveApiKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem('user_gemini_api_key', apiKey.trim());
+      setSaveStatus('API key saved for client-side translations.');
     } else {
-      localStorage.removeItem('asl_backend_api_url');
-      setTestStatus({
-        testing: false,
-        success: true,
-        message: 'Reset to default relative API endpoint (/api).'
-      });
-      runHealthCheck('');
+      localStorage.removeItem('user_gemini_api_key');
+      setSaveStatus('Cleared custom API key.');
     }
-  };
-
-  const runHealthCheck = async (baseUrl: string) => {
-    setTestStatus({ testing: true });
-    try {
-      const endpoint = `${baseUrl || ''}/api/health`;
-      const res = await fetch(endpoint, { method: 'GET' });
-      if (res.ok) {
-        const json = await res.json();
-        setTestStatus({
-          testing: false,
-          success: true,
-          message: `Backend online! Gemini configured: ${json.geminiConfigured ? 'YES' : 'NO (Missing server key)'}`
-        });
-      } else {
-        setTestStatus({
-          testing: false,
-          success: false,
-          message: `Backend returned HTTP ${res.status} (${res.statusText})`
-        });
-      }
-    } catch (e: any) {
-      setTestStatus({
-        testing: false,
-        success: false,
-        message: `Connection failed: ${e.message || 'Network unreachable'}`
-      });
-    }
+    setTimeout(() => setSaveStatus(null), 3000);
   };
 
   const diagnosticReport = `ASL Translate Diagnostics Report
 ----------------------------------------
 Timestamp: ${new Date().toISOString()}
+Application Loaded: YES
 Application State: ${appState}
 Secure Context (HTTPS): ${isSecure ? 'YES' : 'NO (Camera requires HTTPS or localhost)'}
 Camera API Supported: ${hasCameraApi ? 'YES' : 'NO'}
 Speech Synthesis Supported: ${hasSpeechApi ? 'YES' : 'NO'}
-Active API Base URL: ${currentApiBase || 'Same-origin (/api)'}
-Backend Health: ${serverHealth.status}
-Gemini Configured on Server: ${serverHealth.geminiConfigured ? 'YES' : 'NO'}
-Active Model: ${serverHealth.model || 'gemini-3.7-flash'}
-Current Page URL: ${currentUrl}
+Environment Mode: ${isStaticHost ? 'Static Host (GitHub Pages / Client-side)' : 'Full-stack (Cloud Run / Express Proxy)'}
+Gemini Configured: ${serverHealth.geminiConfigured || Boolean(apiKey) ? 'YES' : 'NO'}
+Active AI Model: ${serverHealth.model || 'gemini-3.7-flash'}
+Current URL: ${currentUrl}
 User Agent: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'}
-Security Architecture: Server-Side Secret Isolation (GEMINI_API_KEY never in frontend)
 ----------------------------------------`;
 
   const handleCopyReport = () => {
@@ -145,10 +102,10 @@ Security Architecture: Server-Side Secret Isolation (GEMINI_API_KEY never in fro
             </div>
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight">
-                System Diagnostics & API Configuration
+                System Diagnostics & Settings
               </h2>
               <p className="text-xs text-slate-400">
-                Runtime health, camera capability, and secure backend connectivity
+                Runtime environment health and configuration status
               </p>
             </div>
           </div>
@@ -228,70 +185,49 @@ Security Architecture: Server-Side Secret Isolation (GEMINI_API_KEY never in fro
               )}
             </div>
 
-            {/* Backend URL Status */}
+            {/* Environment Host */}
             <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between sm:col-span-2">
               <div className="flex items-center gap-2.5">
-                <Server className="w-4 h-4 text-sky-400" />
-                <span className="text-xs text-slate-300">Active Backend Base URL</span>
+                <Globe className="w-4 h-4 text-sky-400" />
+                <span className="text-xs text-slate-300">Deployment Target</span>
               </div>
-              <span className="text-xs font-mono text-slate-300 truncate max-w-xs">
-                {currentApiBase || 'Same Origin Relative (/api)'}
+              <span className="text-xs font-mono text-slate-300">
+                {isStaticHost ? 'GitHub Pages (Static Client-Side)' : 'Full-Stack Express Proxy'}
               </span>
             </div>
           </div>
 
-          {/* Secure Backend API Configuration */}
+          {/* Optional Client-Side Gemini Key for GitHub Pages */}
           <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <Server className="w-4 h-4 text-indigo-400" />
-                <span>Backend API URL Configuration (for GitHub Pages)</span>
-              </div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Key className="w-4 h-4 text-amber-400" />
+              <span>Optional Client-Side Gemini API Key</span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              When the frontend is deployed to GitHub Pages, specify the base URL of your secure backend (e.g. on Cloud Run, Render, or Railway) hosting the private <code className="text-indigo-300 font-mono">GEMINI_API_KEY</code>.
+              When hosted statically on GitHub Pages without a backend server, you can optionally provide your Gemini API key directly to enable AI vision recognition in your browser. Stored only in your local browser storage.
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
               <input
-                id="backend-api-url-input"
-                type="text"
-                placeholder="https://your-asl-backend.example.com"
-                value={customApiUrl}
-                onChange={(e) => setCustomApiUrl(e.target.value)}
+                id="gemini-api-key-input"
+                type="password"
+                placeholder="AIzaSy..."
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
                 className="flex-1 px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
               />
               <button
-                onClick={handleSaveApiUrl}
+                onClick={handleSaveApiKey}
                 className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors cursor-pointer"
               >
-                Save & Test
+                Save Key
               </button>
             </div>
-
-            {testStatus.testing && (
-              <p className="text-xs text-indigo-400 flex items-center gap-1.5 animate-pulse">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                Testing backend connection...
+            {saveStatus && (
+              <p className="text-xs text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {saveStatus}
               </p>
             )}
-
-            {!testStatus.testing && testStatus.message && (
-              <p className={`text-xs flex items-center gap-1.5 ${testStatus.success ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {testStatus.success ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                {testStatus.message}
-              </p>
-            )}
-          </div>
-
-          {/* Security Note */}
-          <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-xs text-indigo-200 space-y-1">
-            <div className="font-semibold text-indigo-300 flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Zero Frontend Secret Exposure</span>
-            </div>
-            <p className="text-slate-300 leading-relaxed">
-              Your <code className="text-indigo-300 font-mono font-semibold">GEMINI_API_KEY</code> is strictly isolated to the server-side environment and never committed to GitHub or bundled into the browser JavaScript.
-            </p>
           </div>
 
           {/* Diagnostic Raw Report */}

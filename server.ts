@@ -13,17 +13,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-// Enable CORS for frontend clients (including GitHub Pages)
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
 // Increase JSON payload limit for base64 camera frames
 app.use(express.json({ limit: '20mb' }));
 
@@ -58,8 +47,8 @@ function getGeminiClient(): GoogleGenAI {
   return genAIClient;
 }
 
-// ASL Translation Endpoint Handler
-const handleTranslationRequest = async (req: express.Request, res: express.Response) => {
+// ASL Translation Endpoint
+app.post('/api/translate-asl', async (req, res) => {
   try {
     const { frames, recentHistory, mode = 'continuous' } = req.body;
 
@@ -75,16 +64,15 @@ const handleTranslationRequest = async (req: express.Request, res: express.Respo
       ai = getGeminiClient();
     } catch (err: any) {
       return res.status(503).json({
-        error: 'AI_NOT_CONFIGURED',
+        error: 'Gemini API is not configured',
         code: 'MISSING_API_KEY',
         details: err.message,
         recognized_sign: 'NONE',
         recognized_signs: [],
-        english_translation: 'Gemini is not configured on the translation server yet.',
+        english_translation: 'AI translation is not configured yet. Please configure the GEMINI_API_KEY.',
         confidence: 0,
         is_reliable: false,
-        is_not_configured: true,
-        uncertainty_reason: 'Missing GEMINI_API_KEY on the backend server.'
+        uncertainty_reason: 'Missing API key configuration.'
       });
     }
 
@@ -273,10 +261,7 @@ Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adh
       uncertainty_reason: err.message || 'Temporary service interruption',
     });
   }
-};
-
-app.post('/api/translate-asl', handleTranslationRequest);
-app.post('/api/translate', handleTranslationRequest);
+});
 
 // Vite middleware & Static serving
 async function startServer() {

@@ -21,8 +21,6 @@ interface TranslationPanelProps {
   isTranslating: boolean;
   onClearTranslation: () => void;
   onSpeakText: (text: string) => void;
-  onRetryTranslation?: () => void;
-  onOpenDiagnostics?: () => void;
 }
 
 export const TranslationPanel: React.FC<TranslationPanelProps> = ({
@@ -31,8 +29,6 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
   isTranslating,
   onClearTranslation,
   onSpeakText,
-  onRetryTranslation,
-  onOpenDiagnostics,
 }) => {
   const [copied, setCopied] = useState(false);
   const [showLinguistics, setShowLinguistics] = useState(true);
@@ -54,13 +50,8 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
 
   const confidenceScore = currentResult ? Math.round(currentResult.confidence * 100) : 0;
   const isReliable = Boolean(currentResult?.is_reliable && confidenceScore >= 65);
-  const isNotConfigured = Boolean(currentResult?.is_not_configured);
-  const isConnectionError = Boolean(currentResult?.is_connection_error);
   const isUncertain = Boolean(
-    currentResult && (!isReliable || currentResult.recognized_sign === 'NONE' || currentResult.english_translation.includes('not confident')) &&
-    !isNotConfigured &&
-    !isConnectionError &&
-    !currentResult.is_rate_limited
+    currentResult && (!isReliable || currentResult.recognized_sign === 'NONE' || currentResult.english_translation.includes('not confident'))
   );
 
   return (
@@ -80,17 +71,7 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
         {/* Status / Confidence Badge */}
         {currentResult && (
           <div className="flex items-center gap-2">
-            {isNotConfigured ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
-                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Not Configured</span>
-              </span>
-            ) : isConnectionError ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
-                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Backend Offline</span>
-              </span>
-            ) : isReliable ? (
+            {isReliable ? (
               <span
                 id="translation-confidence-high"
                 className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/80 border border-emerald-500/30 text-emerald-300"
@@ -117,56 +98,7 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
           {/* Main Translated Text Display */}
           {currentResult ? (
             <div className="space-y-4">
-              {isNotConfigured ? (
-                <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/40 text-rose-200 space-y-3">
-                  <div className="flex items-center gap-2 font-bold text-sm text-rose-300">
-                    <AlertCircle className="w-4 h-4 text-rose-400" />
-                    <span>AI translation is not configured</span>
-                  </div>
-                  <p className="text-base sm:text-lg font-medium text-rose-100/90 leading-relaxed">
-                    Gemini is not configured on the translation server yet.
-                  </p>
-                  <p className="text-xs text-rose-300/80">
-                    Please configure <code className="bg-rose-900/60 px-1 py-0.5 rounded font-mono text-rose-100">GEMINI_API_KEY</code> in the backend server environment.
-                  </p>
-                  {onOpenDiagnostics && (
-                    <button
-                      onClick={onOpenDiagnostics}
-                      className="px-3 py-1.5 rounded-lg bg-rose-900/80 hover:bg-rose-800 text-rose-100 text-xs font-semibold border border-rose-500/40 transition-colors cursor-pointer"
-                    >
-                      Open Diagnostics
-                    </button>
-                  )}
-                </div>
-              ) : isConnectionError ? (
-                <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 space-y-3">
-                  <div className="flex items-center gap-2 font-bold text-sm text-amber-300">
-                    <AlertCircle className="w-4 h-4 text-amber-400" />
-                    <span>AI translation unavailable</span>
-                  </div>
-                  <p className="text-base sm:text-lg font-medium text-amber-100/90 leading-relaxed">
-                    Unable to connect to the translation service. Please check the API configuration and try again.
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    {onRetryTranslation && (
-                      <button
-                        onClick={onRetryTranslation}
-                        className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors cursor-pointer shadow-md"
-                      >
-                        Try Again
-                      </button>
-                    )}
-                    {onOpenDiagnostics && (
-                      <button
-                        onClick={onOpenDiagnostics}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
-                      >
-                        Configure API URL
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : currentResult.is_rate_limited ? (
+              {currentResult.is_rate_limited ? (
                 <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 space-y-2">
                   <div className="flex items-center gap-2 font-bold text-sm text-amber-300">
                     <AlertCircle className="w-4 h-4" />

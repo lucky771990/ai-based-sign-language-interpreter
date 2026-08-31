@@ -13,7 +13,7 @@ import {
   CameraSettings,
   ServerHealthStatus
 } from './types';
-import { aslRecognitionService, getApiBaseUrl } from './services/aslRecognitionService';
+import { aslRecognitionService } from './services/aslRecognitionService';
 import { speechService } from './services/speechService';
 import { Header } from './components/Header';
 import { LandingHero } from './components/LandingHero';
@@ -76,15 +76,11 @@ export default function App() {
   useEffect(() => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
-    const baseUrl = getApiBaseUrl();
-    const endpoint = `${baseUrl}/api/health`;
 
-    fetch(endpoint, { signal: controller.signal })
+    fetch('/api/health', { signal: controller.signal })
       .then(async (res) => {
         clearTimeout(timeoutId);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
         return JSON.parse(text);
       })
@@ -93,12 +89,12 @@ export default function App() {
           setServerHealth(data);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         clearTimeout(timeoutId);
         // Non-blocking fallback for static hosting (e.g. GitHub Pages)
         setServerHealth({
           status: 'static_client',
-          geminiConfigured: false,
+          geminiConfigured: Boolean(localStorage.getItem('user_gemini_api_key')),
           model: 'gemini-3.7-flash',
         });
       });
@@ -352,12 +348,6 @@ export default function App() {
           return;
         }
 
-        // Check if backend reported missing key or connection error
-        if (result.is_not_configured || result.is_connection_error) {
-          setRecognitionStatus('idle');
-          return;
-        }
-
         // Check if sign is reliable and not a duplicate within cooldown
         if (result.is_reliable && result.recognized_sign !== 'NONE' && result.english_translation) {
           setRecognitionStatus('success');
@@ -493,10 +483,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       {/* Configuration notification if missing API key */}
-      <ConfigBanner
-        isConfigured={serverHealth.geminiConfigured}
-        onOpenDiagnostics={() => setShowDiagnosticsModal(true)}
-      />
+      <ConfigBanner isConfigured={serverHealth.geminiConfigured} />
 
       {/* Main Global Header */}
       <Header
@@ -522,10 +509,7 @@ export default function App() {
               const el = document.getElementById('how-it-works-section');
               el?.scrollIntoView({ behavior: 'smooth' });
             }}
-            onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
             isRequesting={cameraPermission === 'requesting'}
-            cameraPermission={cameraPermission}
-            permissionError={permissionError}
           />
         ) : (
           /* Main Interactive Studio Screen */
@@ -562,8 +546,6 @@ export default function App() {
                   isTranslating={isTranslating}
                   onClearTranslation={handleClearTranslation}
                   onSpeakText={handleSpeakText}
-                  onRetryTranslation={() => processFrameSequence(true)}
-                  onOpenDiagnostics={() => setShowDiagnosticsModal(true)}
                 />
               </div>
             </div>
