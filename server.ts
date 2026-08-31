@@ -112,9 +112,12 @@ ${contextPrompt}
 
 Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adhering to the specified schema.`;
 
-    const modelsToTry = ['gemini-3.7-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+    // Supported, active models per Gemini SDK guidelines (avoiding deprecated 2.5 models)
+    const modelsToTry = ['gemini-3.7-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
     let lastError: any = null;
     let responseText: string | null = null;
+    let isRateLimited = false;
+    let retryAfterSeconds = 15;
 
     for (const modelName of modelsToTry) {
       try {
@@ -187,6 +190,17 @@ Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adh
         lastError = modelErr;
         const status = modelErr?.status || modelErr?.error?.code || modelErr?.code;
         const errMsg = modelErr?.message || '';
+        
+        // Check for 429 quota exhaustion or 503 high demand
+        if (status === 429 || errMsg.includes('429') || errMsg.includes('Quota exceeded') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+          isRateLimited = true;
+          // Try to extract retry seconds if present in error message (e.g. retry in 42s)
+          const match = errMsg.match(/retry in ([0-9.]+)\s*s/i) || errMsg.match(/retryDelay["']?:\s*["']?([0-9]+)/i);
+          if (match && match[1]) {
+            retryAfterSeconds = Math.min(60, Math.max(5, Math.ceil(parseFloat(match[1]))));
+          }
+        }
+
         console.warn(`Model ${modelName} encountered error (${status}): ${errMsg}. Attempting fallback...`);
         // Small delay before trying fallback model
         await new Promise((resolve) => setTimeout(resolve, 300));
@@ -194,7 +208,21 @@ Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adh
     }
 
     if (!responseText) {
-      console.error('All model attempts failed:', lastError);
+      console.error('All model attempts completed with errors:', lastError?.message || lastError);
+      
+      if (isRateLimited) {
+        return res.json({
+          recognized_sign: 'NONE',
+          recognized_signs: [],
+          english_translation: `Gemini API rate limit reached. Pausing for ${retryAfterSeconds}s to recover quota...`,
+          confidence: 0,
+          is_reliable: false,
+          is_rate_limited: true,
+          retry_after_seconds: retryAfterSeconds,
+          uncertainty_reason: 'API rate limit cooldown in effect.',
+        });
+      }
+
       // Return a graceful non-crashing payload so frontend stays responsive
       return res.json({
         recognized_sign: 'NONE',

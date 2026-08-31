@@ -3,13 +3,57 @@ import { ASLRecognitionResult } from '../types';
 class ASLRecognitionService {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D | null;
+  private motionCanvas: HTMLCanvasElement;
+  private motionCtx: CanvasRenderingContext2D | null;
   private isProcessing: boolean = false;
   private lastRecognizedSign: string = '';
   private lastRecognitionTime: number = 0;
+  private previousMotionSample: Uint8ClampedArray | null = null;
 
   constructor() {
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d');
+    this.motionCanvas = document.createElement('canvas');
+    this.motionCanvas.width = 64;
+    this.motionCanvas.height = 48;
+    this.motionCtx = this.motionCanvas.getContext('2d', { willReadFrequently: true });
+  }
+
+  /**
+   * Evaluates if there is active motion/gesture in the camera feed
+   * to conserve Gemini API quota during idle periods
+   */
+  public detectMotion(video: HTMLVideoElement): number {
+    if (!video || video.readyState < 2 || !this.motionCtx) {
+      return 1.0; // Default to allowing if unable to sample
+    }
+
+    try {
+      this.motionCtx.drawImage(video, 0, 0, 64, 48);
+      const imgData = this.motionCtx.getImageData(0, 0, 64, 48).data;
+
+      if (!this.previousMotionSample) {
+        this.previousMotionSample = new Uint8ClampedArray(imgData);
+        return 1.0;
+      }
+
+      let diffSum = 0;
+      const totalPixels = 64 * 48;
+      for (let i = 0; i < imgData.length; i += 4) {
+        const diffR = Math.abs(imgData[i] - this.previousMotionSample[i]);
+        const diffG = Math.abs(imgData[i + 1] - this.previousMotionSample[i + 1]);
+        const diffB = Math.abs(imgData[i + 2] - this.previousMotionSample[i + 2]);
+        const pixelDiff = (diffR + diffG + diffB) / 3;
+        if (pixelDiff > 18) {
+          diffSum++;
+        }
+      }
+
+      this.previousMotionSample.set(imgData);
+      return diffSum / totalPixels;
+    } catch {
+      return 1.0;
+    }
   }
 
   /**
@@ -67,7 +111,8 @@ class ASLRecognitionService {
   }
 
   /**
-   * Translates captured video frames into English via the backend Gemini endpoint
+   * Translates captured video frames into English via the backend Gemini endpoint,
+   * or directly via client-side Gemini SDK if deployed on static GitHub Pages with user key.
    */
   public async translateFrames(
     frames: string[],
@@ -86,7 +131,6 @@ class ASLRecognitionService {
     }
 
     if (this.isProcessing) {
-      // Return a skipped result gracefully rather than throwing an exception
       return {
         recognized_sign: 'NONE',
         recognized_signs: [],
@@ -102,49 +146,150 @@ class ASLRecognitionService {
     // Safety timeout to ensure isProcessing resets even on network disconnects
     const timeoutId = setTimeout(() => {
       this.isProcessing = false;
-    }, 8000);
+    }, 9000);
 
     try {
-      const response = await fetch('/api/translate-asl', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          frames,
-          recentHistory,
-          mode,
-        }),
-      });
+      // Step 1: Try backend Express API route first
+      let response: Response | null = null;
+      let data: any = null;
+      let isBackendAvailable = true;
+
+      try {
+        response = await fetch('/api/translate-asl', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            frames,
+            recentHistory,
+            mode,
+          }),
+        });
+
+        if (response.ok) {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } else if (response.status === 404) {
+          // Backend route not available (e.g. static hosting on GitHub Pages)
+          isBackendAvailable = false;
+        } else {
+          const text = await response.text();
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = { error: `Server error (HTTP ${response.status})` };
+          }
+        }
+      } catch (networkErr) {
+        // Fetch failed (network down or static hosting)
+        isBackendAvailable = false;
+      }
+
+      // Step 2: If static host (no backend server), check for client-side API key
+      if (!isBackendAvailable || !data) {
+        const clientKey = (typeof window !== 'undefined' ? localStorage.getItem('user_gemini_api_key') : '') ||
+          ((import.meta as any)?.env?.VITE_GEMINI_API_KEY as string) ||
+          '';
+
+        if (clientKey) {
+          try {
+            const { GoogleGenAI, Type } = await import('@google/genai');
+            const ai = new GoogleGenAI({ apiKey: clientKey });
+
+            const contents: any[] = [];
+            for (const frame of frames) {
+              const base64Data = frame.replace(/^data:image\/[a-z]+;base64,/, '');
+              contents.push({
+                inlineData: {
+                  mimeType: 'image/jpeg',
+                  data: base64Data,
+                },
+              });
+            }
+
+            contents.push({
+              text: `You are an expert American Sign Language (ASL) interpreter and linguistic vision system.
+Analyze the video frame(s) and recognize any ASL signs or gestures performed.
+Translate into clean English.
+Recent recognized sign context: ${recentHistory.slice(-5).join(', ') || 'None'}.
+Mode: ${mode}.`
+            });
+
+            const models = ['gemini-3.7-flash', 'gemini-3.1-flash-lite'];
+            let directResultText = '';
+
+            for (const m of models) {
+              try {
+                const aiRes = await ai.models.generateContent({
+                  model: m,
+                  contents,
+                  config: {
+                    temperature: 0.1,
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                      type: Type.OBJECT,
+                      properties: {
+                        recognized_sign: { type: Type.STRING },
+                        recognized_signs: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        english_translation: { type: Type.STRING },
+                        confidence: { type: Type.NUMBER },
+                        is_reliable: { type: Type.BOOLEAN },
+                        hand_shape_analysis: { type: Type.STRING },
+                        movement_description: { type: Type.STRING },
+                        uncertainty_reason: { type: Type.STRING },
+                      },
+                      required: ['recognized_sign', 'english_translation', 'confidence', 'is_reliable'],
+                    }
+                  }
+                });
+                directResultText = aiRes.text || '';
+                if (directResultText) break;
+              } catch (clientModelErr) {
+                console.warn(`Direct client model ${m} error:`, clientModelErr);
+              }
+            }
+
+            if (directResultText) {
+              data = JSON.parse(directResultText);
+            }
+          } catch (directAiErr: any) {
+            console.warn('Direct client-side Gemini execution failed:', directAiErr);
+            data = {
+              recognized_sign: 'NONE',
+              english_translation: 'Direct client-side translation failed. Check API key.',
+              confidence: 0,
+              is_reliable: false,
+              uncertainty_reason: directAiErr?.message || 'Client AI error',
+            };
+          }
+        } else {
+          // No backend and no client key provided on static host
+          clearTimeout(timeoutId);
+          return {
+            recognized_sign: 'NONE',
+            recognized_signs: [],
+            english_translation: 'Gemini is not configured for this static deployment.',
+            confidence: 0,
+            is_reliable: false,
+            uncertainty_reason: 'Static host detected without backend proxy. Configure a custom Gemini key in System Diagnostics to enable direct translations.',
+            timestamp: Date.now(),
+          };
+        }
+      }
 
       clearTimeout(timeoutId);
-      let data: any = null;
-      try {
-        const text = await response.text();
-        data = JSON.parse(text);
-      } catch {
-        // Response was not JSON (e.g. 404 HTML on static GitHub Pages)
+
+      if (!data) {
         return {
           recognized_sign: 'NONE',
           recognized_signs: [],
-          english_translation: 'AI translation service unavailable on static host.',
+          english_translation: "I'm not confident about that sign. Please try again.",
           confidence: 0,
           is_reliable: false,
-          uncertainty_reason: 'Backend server endpoint is required for AI translation processing.'
+          uncertainty_reason: 'No response received from translation service.'
         };
       }
-
-      if (!response.ok || !data) {
-        return {
-          recognized_sign: 'NONE',
-          recognized_signs: [],
-          english_translation: data?.english_translation || data?.error || 'Translation service unavailable',
-          confidence: 0,
-          is_reliable: false,
-          uncertainty_reason: data?.details || data?.error || 'Server error occurred during sign processing.'
-        };
-      }
-
 
       // Temporal smoothing: Check if confidence meets threshold
       const isReliable = Boolean(data.is_reliable && data.confidence >= 0.65);
@@ -159,10 +304,11 @@ class ASLRecognitionService {
         movement_description: data.movement_description || undefined,
         detected_non_manual_markers: data.detected_non_manual_markers || undefined,
         uncertainty_reason: data.uncertainty_reason || undefined,
+        is_rate_limited: Boolean(data.is_rate_limited),
+        retry_after_seconds: data.retry_after_seconds,
         timestamp: Date.now(),
       };
 
-      // Record last recognition to prevent repetitive bursts
       if (result.is_reliable && result.recognized_sign !== 'NONE') {
         this.lastRecognizedSign = result.recognized_sign;
         this.lastRecognitionTime = Date.now();

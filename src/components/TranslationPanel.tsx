@@ -98,7 +98,20 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
           {/* Main Translated Text Display */}
           {currentResult ? (
             <div className="space-y-4">
-              {isUncertain ? (
+              {currentResult.is_rate_limited ? (
+                <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-sm text-amber-300">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Gemini Quota Cooldown Active</span>
+                  </div>
+                  <p className="text-base sm:text-lg font-medium text-amber-100/90 leading-relaxed">
+                    {currentResult.english_translation || "API rate limit reached. Pausing momentarily to recharge..."}
+                  </p>
+                  <p className="text-xs text-amber-300/80">
+                    Tip: Continuous mode uses motion detection to save quota. You can also use "Snap Sign Now" to translate only when you perform a sign.
+                  </p>
+                </div>
+              ) : isUncertain ? (
                 <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/30 text-amber-200 space-y-2">
                   <div className="flex items-center gap-2 font-bold text-sm text-amber-300">
                     <AlertCircle className="w-4 h-4" />

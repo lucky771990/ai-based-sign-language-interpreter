@@ -1,5 +1,5 @@
 import React from 'react';
-import { CameraPermissionState } from '../types';
+import { CameraPermissionState, AppState } from '../types';
 import {
   Hand,
   Volume2,
@@ -9,27 +9,32 @@ import {
   HelpCircle,
   Sparkles,
   Camera,
-  CameraOff
+  CameraOff,
+  Activity
 } from 'lucide-react';
 
 interface HeaderProps {
   cameraPermission: CameraPermissionState;
+  appState?: AppState;
   isTranslating: boolean;
   autoSpeak: boolean;
   onToggleAutoSpeak: () => void;
   onOpenReference: () => void;
   onOpenPermissionGuide: () => void;
   onOpenPrivacy: () => void;
+  onOpenDiagnostics?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   cameraPermission,
+  appState,
   isTranslating,
   autoSpeak,
   onToggleAutoSpeak,
   onOpenReference,
   onOpenPermissionGuide,
   onOpenPrivacy,
+  onOpenDiagnostics,
 }) => {
   const getStatusBadge = () => {
     switch (cameraPermission) {
@@ -165,6 +170,19 @@ export const Header: React.FC<HeaderProps> = ({
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span className="hidden sm:inline">Privacy</span>
           </button>
+
+          {/* System Diagnostics */}
+          {onOpenDiagnostics && (
+            <button
+              id="open-diagnostics-button"
+              onClick={onOpenDiagnostics}
+              className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors flex items-center gap-1.5 text-xs font-medium"
+              title="System Diagnostics & Environment Settings"
+            >
+              <Activity className="w-4 h-4 text-indigo-400" />
+              <span className="hidden sm:inline">Diagnostics</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

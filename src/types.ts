@@ -1,3 +1,13 @@
+export type AppState =
+  | 'READY'
+  | 'REQUESTING_CAMERA'
+  | 'CAMERA_ACTIVE'
+  | 'TRANSLATING'
+  | 'CAMERA_DENIED'
+  | 'CAMERA_ERROR'
+  | 'AI_ERROR'
+  | 'CONFIGURATION_ERROR';
+
 export type CameraPermissionState =
   | 'unrequested'
   | 'requesting'
@@ -12,6 +22,7 @@ export type RecognitionStatus =
   | 'analyzing'
   | 'success'
   | 'low_confidence'
+  | 'rate_limited'
   | 'error';
 
 export interface ASLRecognitionResult {
@@ -25,6 +36,8 @@ export interface ASLRecognitionResult {
   detected_non_manual_markers?: string;
   is_sentence?: boolean;
   uncertainty_reason?: string;
+  is_rate_limited?: boolean;
+  retry_after_seconds?: number;
   timestamp?: number;
 }
 

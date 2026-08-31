@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
+  AppState,
   CameraPermissionState,
   RecognitionStatus,
   ASLRecognitionResult,
@@ -22,10 +23,14 @@ import { TranslationHistory } from './components/TranslationHistory';
 import { ASLReferenceModal } from './components/ASLReferenceModal';
 import { PermissionGuideModal } from './components/PermissionGuideModal';
 import { PrivacyModal } from './components/PrivacyModal';
+import { DiagnosticsModal } from './components/DiagnosticsModal';
 import { ConfigBanner } from './components/ConfigBanner';
 import { Sparkles, ShieldCheck, Heart, Volume2 } from 'lucide-react';
 
 export default function App() {
+  // Explicit Application Lifecycle State (Initial state is strictly READY)
+  const [appState, setAppState] = useState<AppState>('READY');
+
   // Camera & Stream State
   const [cameraPermission, setCameraPermission] = useState<CameraPermissionState>('unrequested');
   const [permissionError, setPermissionError] = useState<string | null>(null);
@@ -42,7 +47,7 @@ export default function App() {
 
   // Server health state
   const [serverHealth, setServerHealth] = useState<ServerHealthStatus>({
-    status: 'checking',
+    status: 'ready',
     geminiConfigured: true,
     model: 'gemini-3.7-flash',
   });
@@ -61,15 +66,20 @@ export default function App() {
   const [showReferenceModal, setShowReferenceModal] = useState<boolean>(false);
   const [showPermissionGuideModal, setShowPermissionGuideModal] = useState<boolean>(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
+  const [showDiagnosticsModal, setShowDiagnosticsModal] = useState<boolean>(false);
 
   // Reference to hold active translation loop timer
   const translationLoopRef = useRef<NodeJS.Timeout | null>(null);
   const isLoopRunningRef = useRef<boolean>(false);
 
-  // Check server configuration health on mount
+  // Check server configuration health on mount (Non-blocking background check)
   useEffect(() => {
-    fetch('/api/health')
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    fetch('/api/health', { signal: controller.signal })
       .then(async (res) => {
+        clearTimeout(timeoutId);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
         return JSON.parse(text);
@@ -80,13 +90,16 @@ export default function App() {
         }
       })
       .catch((err) => {
-        console.warn('Could not fetch server health status (static host mode):', err);
+        clearTimeout(timeoutId);
+        // Non-blocking fallback for static hosting (e.g. GitHub Pages)
         setServerHealth({
-          status: 'ready',
-          geminiConfigured: true,
+          status: 'static_client',
+          geminiConfigured: Boolean(localStorage.getItem('user_gemini_api_key')),
           model: 'gemini-3.7-flash',
         });
       });
+
+    return () => clearTimeout(timeoutId);
   }, []);
 
 
@@ -124,6 +137,7 @@ export default function App() {
       translationLoopRef.current = null;
     }
     setRecognitionStatus('idle');
+    setAppState('READY');
   }, []);
 
   /**
@@ -132,7 +146,8 @@ export default function App() {
   const startCamera = useCallback(async (customDeviceId?: string) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraPermission('unavailable');
-      setPermissionError('Your browser does not support video media APIs.');
+      setAppState('CAMERA_ERROR');
+      setPermissionError('Your browser does not support video media APIs or is in an insecure HTTP context.');
       return;
     }
 
@@ -140,6 +155,7 @@ export default function App() {
     stopCameraStream();
 
     setCameraPermission('requesting');
+    setAppState('REQUESTING_CAMERA');
     setPermissionError(null);
 
     const deviceId = customDeviceId || settings.deviceId;
@@ -198,6 +214,7 @@ export default function App() {
 
       setCameraPermission('granted');
       setIsTranslating(true);
+      setAppState('TRANSLATING');
       refreshDevices();
     } catch (err: any) {
       console.error('Camera getUserMedia error:', err);
@@ -217,6 +234,7 @@ export default function App() {
         errMsg.includes('Permission denied')
       ) {
         setCameraPermission('denied');
+        setAppState('CAMERA_DENIED');
         setPermissionError(
           isSystemDenied
             ? 'Camera blocked by your Computer System settings (macOS Privacy & Security > Camera, or Windows Camera Settings). Please enable camera permission for your browser and click "Try Again", or open in a new tab.'
@@ -227,12 +245,15 @@ export default function App() {
         }
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setCameraPermission('unavailable');
+        setAppState('CAMERA_ERROR');
         setPermissionError('No video camera device was found on this system.');
       } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
         setCameraPermission('unavailable');
+        setAppState('CAMERA_ERROR');
         setPermissionError('Camera is already in use by another application or video tab.');
       } else {
         setCameraPermission('denied');
+        setAppState('CAMERA_DENIED');
         setPermissionError(err.message || 'Failed to acquire camera permission.');
       }
     }
@@ -246,6 +267,23 @@ export default function App() {
     };
   }, [stopCameraStream]);
 
+  // Rate limit cooldown state
+  const [rateLimitCooldownSeconds, setRateLimitCooldownSeconds] = useState<number>(0);
+  const rateLimitCooldownRef = useRef<number>(0);
+
+  // Countdown timer for rate limit
+  useEffect(() => {
+    if (rateLimitCooldownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setRateLimitCooldownSeconds((prev) => {
+        const next = prev - 1;
+        rateLimitCooldownRef.current = Math.max(0, next);
+        return Math.max(0, next);
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitCooldownSeconds]);
+
   /**
    * Process a single translation cycle from the current video frames
    */
@@ -257,6 +295,22 @@ export default function App() {
 
       if (aslRecognitionService.getIsProcessing()) {
         return;
+      }
+
+      // If in rate limit cooldown and not manual, wait
+      if (rateLimitCooldownRef.current > 0 && !isManualTrigger) {
+        setRecognitionStatus('rate_limited');
+        return;
+      }
+
+      // Motion gating: In continuous mode, check if there's any hand/gesture motion
+      if (!isManualTrigger) {
+        const motionLevel = aslRecognitionService.detectMotion(videoRef.current);
+        if (motionLevel < 0.012) {
+          // Camera is static / user is still - conserve API quota
+          setRecognitionStatus('idle');
+          return;
+        }
       }
 
       setRecognitionStatus('capturing');
@@ -284,6 +338,15 @@ export default function App() {
         );
 
         setCurrentResult(result);
+
+        // Check if rate limited
+        if (result.is_rate_limited) {
+          const cooldown = result.retry_after_seconds || 15;
+          setRateLimitCooldownSeconds(cooldown);
+          rateLimitCooldownRef.current = cooldown;
+          setRecognitionStatus('rate_limited');
+          return;
+        }
 
         // Check if sign is reliable and not a duplicate within cooldown
         if (result.is_reliable && result.recognized_sign !== 'NONE' && result.english_translation) {
@@ -351,7 +414,10 @@ export default function App() {
       await processFrameSequence(false);
 
       if (isLoopRunningRef.current && isTranslating) {
-        translationLoopRef.current = setTimeout(runLoop, settings.sampleIntervalMs);
+        const nextDelay = rateLimitCooldownRef.current > 0
+          ? Math.max(3000, rateLimitCooldownRef.current * 1000)
+          : settings.sampleIntervalMs;
+        translationLoopRef.current = setTimeout(runLoop, nextDelay);
       }
     };
 
@@ -422,12 +488,14 @@ export default function App() {
       {/* Main Global Header */}
       <Header
         cameraPermission={cameraPermission}
+        appState={appState}
         isTranslating={isTranslating}
         autoSpeak={settings.autoSpeak}
         onToggleAutoSpeak={handleToggleAutoSpeak}
         onOpenReference={() => setShowReferenceModal(true)}
         onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
         onOpenPrivacy={() => setShowPrivacyModal(true)}
+        onOpenDiagnostics={() => setShowDiagnosticsModal(true)}
       />
 
       {/* Main Body View */}
@@ -456,6 +524,7 @@ export default function App() {
                   permissionError={permissionError}
                   isTranslating={isTranslating}
                   recognitionStatus={recognitionStatus}
+                  rateLimitCooldownSeconds={rateLimitCooldownSeconds}
                   settings={settings}
                   availableDevices={availableDevices}
                   onStartCameraAndTranslation={() => startCamera()}
@@ -522,6 +591,12 @@ export default function App() {
             >
               Camera Help
             </button>
+            <button
+              onClick={() => setShowDiagnosticsModal(true)}
+              className="text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer font-medium"
+            >
+              Diagnostics
+            </button>
           </div>
         </div>
       </footer>
@@ -544,6 +619,13 @@ export default function App() {
       <PrivacyModal
         isOpen={showPrivacyModal}
         onClose={() => setShowPrivacyModal(false)}
+      />
+
+      <DiagnosticsModal
+        isOpen={showDiagnosticsModal}
+        onClose={() => setShowDiagnosticsModal(false)}
+        appState={appState}
+        serverHealth={serverHealth}
       />
     </div>
   );

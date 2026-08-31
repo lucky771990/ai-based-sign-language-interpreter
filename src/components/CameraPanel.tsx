@@ -26,6 +26,7 @@ interface CameraPanelProps {
   permissionError: string | null;
   isTranslating: boolean;
   recognitionStatus: RecognitionStatus;
+  rateLimitCooldownSeconds?: number;
   settings: CameraSettings;
   availableDevices: MediaDeviceInfo[];
   onStartCameraAndTranslation: () => void;
@@ -44,6 +45,7 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
   permissionError,
   isTranslating,
   recognitionStatus,
+  rateLimitCooldownSeconds = 0,
   settings,
   availableDevices,
   onStartCameraAndTranslation,
@@ -191,7 +193,16 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
         {/* Live Processing Indicator Badge inside Video */}
         {cameraPermission === 'granted' && isTranslating && (
           <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-slate-700/80 shadow-lg">
-            {recognitionStatus === 'analyzing' ? (
+            {recognitionStatus === 'rate_limited' || rateLimitCooldownSeconds > 0 ? (
+              <>
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <span className="text-xs font-semibold text-amber-300">
+                  {rateLimitCooldownSeconds > 0
+                    ? `Quota Cooldown (${rateLimitCooldownSeconds}s)...`
+                    : 'Quota Cooldown...'}
+                </span>
+              </>
+            ) : recognitionStatus === 'analyzing' ? (
               <>
                 <span className="animate-spin h-2.5 w-2.5 border-2 border-indigo-400 border-t-transparent rounded-full"></span>
                 <span className="text-xs font-semibold text-indigo-300">Analyzing ASL Signs...</span>
