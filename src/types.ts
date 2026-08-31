@@ -38,6 +38,8 @@ export interface ASLRecognitionResult {
   uncertainty_reason?: string;
   is_rate_limited?: boolean;
   retry_after_seconds?: number;
+  is_not_configured?: boolean;
+  is_connection_error?: boolean;
   timestamp?: number;
 }
 

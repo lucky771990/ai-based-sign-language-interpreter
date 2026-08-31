@@ -348,6 +348,12 @@ export default function App() {
           return;
         }
 
+        // Check if backend reported missing key or connection error
+        if (result.is_not_configured || result.is_connection_error) {
+          setRecognitionStatus('idle');
+          return;
+        }
+
         // Check if sign is reliable and not a duplicate within cooldown
         if (result.is_reliable && result.recognized_sign !== 'NONE' && result.english_translation) {
           setRecognitionStatus('success');
@@ -483,7 +489,10 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       {/* Configuration notification if missing API key */}
-      <ConfigBanner isConfigured={serverHealth.geminiConfigured} />
+      <ConfigBanner
+        isConfigured={serverHealth.geminiConfigured}
+        onOpenDiagnostics={() => setShowDiagnosticsModal(true)}
+      />
 
       {/* Main Global Header */}
       <Header
@@ -546,6 +555,8 @@ export default function App() {
                   isTranslating={isTranslating}
                   onClearTranslation={handleClearTranslation}
                   onSpeakText={handleSpeakText}
+                  onRetryTranslation={() => processFrameSequence(true)}
+                  onOpenDiagnostics={() => setShowDiagnosticsModal(true)}
                 />
               </div>
             </div>
