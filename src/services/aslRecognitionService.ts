@@ -75,8 +75,9 @@ class ASLRecognitionService {
 
   /**
    * Captures a single video frame as a compressed base64 JPEG string
+   * Optimized at 480px width & 0.75 quality for rapid network transfer & AI inference
    */
-  public captureFrame(video: HTMLVideoElement, maxWidth = 640): string | null {
+  public captureFrame(video: HTMLVideoElement, maxWidth = 480): string | null {
     if (!video || video.readyState < 2 || !this.ctx) {
       return null;
     }
@@ -95,17 +96,17 @@ class ASLRecognitionService {
     }
 
     this.ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-    return this.canvas.toDataURL('image/jpeg', 0.82);
+    return this.canvas.toDataURL('image/jpeg', 0.75);
   }
 
   /**
-   * Captures a short sequence of temporal frames (e.g. 2 frames spaced by delayMs)
-   * to capture ASL movement dynamics
+   * Captures a short sequence of temporal frames spaced 110ms apart
+   * to capture ASL movement dynamics rapidly
    */
   public async captureTemporalSequence(
     video: HTMLVideoElement,
     frameCount = 2,
-    delayMs = 260
+    delayMs = 110
   ): Promise<string[]> {
     const frames: string[] = [];
 

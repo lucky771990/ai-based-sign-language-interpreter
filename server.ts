@@ -33,7 +33,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     geminiConfigured: isConfigured,
-    model: 'gemini-3.7-flash',
+    model: 'gemini-3.1-flash-lite',
     timestamp: new Date().toISOString()
   });
 });
@@ -56,6 +56,23 @@ function getGeminiClient(): GoogleGenAI {
     });
   }
   return genAIClient;
+}
+
+// Cache for temporarily unavailable / rate-limited models to skip redundant 503/429 retries
+const modelCooldownUntil: Record<string, number> = {};
+
+function isModelAvailable(modelName: string): boolean {
+  const cooldown = modelCooldownUntil[modelName];
+  if (!cooldown) return true;
+  if (Date.now() > cooldown) {
+    delete modelCooldownUntil[modelName];
+    return true;
+  }
+  return false;
+}
+
+function markModelCooldown(modelName: string, durationSeconds: number) {
+  modelCooldownUntil[modelName] = Date.now() + durationSeconds * 1000;
 }
 
 // ASL Translation Endpoint Handler
@@ -124,8 +141,15 @@ ${contextPrompt}
 
 Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adhering to the specified schema.`;
 
-    // Supported, active models per Gemini SDK guidelines (avoiding deprecated 2.5 models)
-    const modelsToTry = ['gemini-3.7-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+    // Supported active models in order of preferred speed and latency
+    const allModels = ['gemini-3.1-flash-lite', 'gemini-3.7-flash', 'gemini-flash-latest'];
+    
+    // Sort available models first (filter out models currently under active 503/429 cooldown, unless all are on cooldown)
+    let modelsToTry = allModels.filter(isModelAvailable);
+    if (modelsToTry.length === 0) {
+      modelsToTry = allModels; // Fallback to all if all are on cooldown
+    }
+
     let lastError: any = null;
     let responseText: string | null = null;
     let isRateLimited = false;
@@ -140,7 +164,11 @@ Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adh
           },
           config: {
             systemInstruction,
-            temperature: 0.2,
+            temperature: 0.1,
+            maxOutputTokens: 250,
+            thinkingConfig: {
+              thinkingBudget: 0,
+            },
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
@@ -203,30 +231,33 @@ Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adh
         const status = modelErr?.status || modelErr?.error?.code || modelErr?.code;
         const errMsg = modelErr?.message || '';
         
-        // Check for 429 quota exhaustion or 503 high demand
-        if (status === 429 || errMsg.includes('429') || errMsg.includes('Quota exceeded') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+        // Handle 429 (quota limit) or 503 (high demand / service unavailable)
+        const is503Unavailable = status === 503 || errMsg.includes('503') || errMsg.includes('UNAVAILABLE') || errMsg.includes('high demand');
+        const is429Exhausted = status === 429 || errMsg.includes('429') || errMsg.includes('Quota exceeded') || errMsg.includes('RESOURCE_EXHAUSTED');
+
+        if (is503Unavailable) {
+          // Temporarily cool down this model for 25s so next requests immediately use the alternative model
+          markModelCooldown(modelName, 25);
+        } else if (is429Exhausted) {
           isRateLimited = true;
-          // Try to extract retry seconds if present in error message (e.g. retry in 42s)
+          markModelCooldown(modelName, 30);
           const match = errMsg.match(/retry in ([0-9.]+)\s*s/i) || errMsg.match(/retryDelay["']?:\s*["']?([0-9]+)/i);
           if (match && match[1]) {
             retryAfterSeconds = Math.min(60, Math.max(5, Math.ceil(parseFloat(match[1]))));
           }
         }
 
-        console.warn(`Model ${modelName} encountered error (${status}): ${errMsg}. Attempting fallback...`);
-        // Small delay before trying fallback model
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // Brief delay before attempting next fallback model
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
 
     if (!responseText) {
-      console.error('All model attempts completed with errors:', lastError?.message || lastError);
-      
       if (isRateLimited) {
         return res.json({
           recognized_sign: 'NONE',
           recognized_signs: [],
-          english_translation: `Gemini API rate limit reached. Pausing for ${retryAfterSeconds}s to recover quota...`,
+          english_translation: `AI recognition service quota in cooldown. Resuming shortly...`,
           confidence: 0,
           is_reliable: false,
           is_rate_limited: true,
@@ -239,10 +270,10 @@ Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adh
       return res.json({
         recognized_sign: 'NONE',
         recognized_signs: [],
-        english_translation: "AI recognition server is busy. Retrying in a moment...",
+        english_translation: "I'm not confident about that sign. Please try again.",
         confidence: 0,
         is_reliable: false,
-        uncertainty_reason: 'Temporary API high demand. Automatic retry in progress.',
+        uncertainty_reason: 'Temporary server demand. Retrying on next gesture frame.',
       });
     }
 

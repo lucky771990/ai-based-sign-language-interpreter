@@ -35,6 +35,7 @@ interface CameraPanelProps {
   onToggleTranslation: () => void;
   onToggleMirror: () => void;
   onSwitchDevice: (deviceId: string) => void;
+  onChangeSpeed?: (intervalMs: number) => void;
   onManualSnap: () => void;
   onOpenPermissionGuide: () => void;
   visualFlash: boolean;
@@ -54,6 +55,7 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
   onToggleTranslation,
   onToggleMirror,
   onSwitchDevice,
+  onChangeSpeed,
   onManualSnap,
   onOpenPermissionGuide,
   visualFlash,
@@ -86,7 +88,54 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
 
         {/* Quick View Controls */}
         {cameraPermission === 'granted' && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Speed Selector */}
+            {onChangeSpeed && (
+              <div className="flex items-center bg-slate-950/80 rounded-lg p-0.5 border border-slate-800">
+                <button
+                  type="button"
+                  id="speed-turbo-btn"
+                  onClick={() => onChangeSpeed(800)}
+                  title="Turbo: 800ms sampling interval for rapid sign-to-text"
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
+                    settings.sampleIntervalMs <= 900
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Zap className="w-3 h-3 text-amber-400" />
+                  <span>Turbo</span>
+                </button>
+                <button
+                  type="button"
+                  id="speed-fast-btn"
+                  onClick={() => onChangeSpeed(1100)}
+                  title="Fast: 1100ms sampling interval (snappy & balanced)"
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
+                    settings.sampleIntervalMs > 900 && settings.sampleIntervalMs <= 1400
+                      ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                  <span>Fast</span>
+                </button>
+                <button
+                  type="button"
+                  id="speed-balanced-btn"
+                  onClick={() => onChangeSpeed(1800)}
+                  title="Balanced: 1800ms sampling interval"
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors hidden sm:flex items-center gap-1 cursor-pointer ${
+                    settings.sampleIntervalMs > 1400
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>Standard</span>
+                </button>
+              </div>
+            )}
+
             {/* Mirror Toggle */}
             <button
               id="toggle-mirror-button"

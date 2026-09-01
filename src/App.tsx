@@ -58,7 +58,7 @@ export default function App() {
     deviceId: '',
     autoSpeak: false,
     continuousMode: true,
-    sampleIntervalMs: 2400,
+    sampleIntervalMs: 1100,
     confidenceThreshold: 0.65,
   });
 
@@ -381,7 +381,7 @@ export default function App() {
       // Motion gating: In continuous mode, check if there's any hand/gesture motion
       if (!isManualTrigger) {
         const motionLevel = aslRecognitionService.detectMotion(videoRef.current);
-        if (motionLevel < 0.012) {
+        if (motionLevel < 0.006) {
           // Camera is static / user is still - conserve API quota
           setRecognitionStatus('idle');
           return;
@@ -391,11 +391,11 @@ export default function App() {
       setRecognitionStatus('capturing');
 
       try {
-        // Capture a sequence of 2 sequential frames spaced 260ms apart to catch sign trajectory
+        // Capture a sequence of 2 sequential frames spaced 110ms apart to catch sign trajectory rapidly
         const frames = await aslRecognitionService.captureTemporalSequence(
           videoRef.current,
           2,
-          260
+          110
         );
 
         if (!frames || frames.length === 0) {
@@ -503,7 +503,7 @@ export default function App() {
     };
 
     // Kick off loop with small initial delay
-    translationLoopRef.current = setTimeout(runLoop, 800);
+    translationLoopRef.current = setTimeout(runLoop, 250);
 
     return () => {
       if (translationLoopRef.current) {
@@ -514,6 +514,10 @@ export default function App() {
   }, [cameraPermission, isTranslating, settings.sampleIntervalMs, processFrameSequence]);
 
   // Handler functions
+  const handleChangeSpeed = (intervalMs: number) => {
+    setSettings((prev) => ({ ...prev, sampleIntervalMs: intervalMs }));
+  };
+
   const handleToggleTranslation = () => {
     setIsTranslating((prev) => !prev);
   };
@@ -619,6 +623,7 @@ export default function App() {
                   onToggleTranslation={handleToggleTranslation}
                   onToggleMirror={handleToggleMirror}
                   onSwitchDevice={handleSwitchDevice}
+                  onChangeSpeed={handleChangeSpeed}
                   onManualSnap={handleManualSnap}
                   onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
                   visualFlash={visualFlash}
