@@ -263,7 +263,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             onClick={onOpenReference}
             className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 self-start sm:self-auto cursor-pointer"
           >
-            <span>View Full ASL Dictionary ({ASL_REFERENCE_SIGNS.length}+ Signs)</span>
+            <span>View Full ASL Dictionary</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
