@@ -116,10 +116,29 @@ export default function App() {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter((d) => d.kind === 'videoinput');
       setAvailableDevices(videoInputs);
+      if (settings.deviceId && videoInputs.length > 0) {
+        const exists = videoInputs.some((d) => d.deviceId === settings.deviceId);
+        if (!exists) {
+          setSettings((prev) => ({ ...prev, deviceId: '' }));
+        }
+      }
     } catch (e) {
       console.warn('Error enumerating devices:', e);
     }
-  }, []);
+  }, [settings.deviceId]);
+
+  // Listen for device connect/disconnect events
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.addEventListener) {
+      const handleDeviceChange = () => {
+        refreshDevices();
+      };
+      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      };
+    }
+  }, [refreshDevices]);
 
   /**
    * Stop all active camera tracks and clean up video stream
@@ -145,13 +164,13 @@ export default function App() {
   }, []);
 
   /**
-   * Explicitly request camera access and initialize stream
+   * Explicitly request camera access and initialize stream with robust fallback constraints
    */
   const startCamera = useCallback(async (customDeviceId?: string) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraPermission('unavailable');
       setAppState('CAMERA_ERROR');
-      setPermissionError('Your browser does not support video media APIs or is in an insecure HTTP context.');
+      setPermissionError('Your browser does not support video media APIs or is running in an insecure HTTP context.');
       return;
     }
 
@@ -162,47 +181,88 @@ export default function App() {
     setAppState('REQUESTING_CAMERA');
     setPermissionError(null);
 
-    const deviceId = customDeviceId || settings.deviceId;
+    const targetDeviceId = customDeviceId || settings.deviceId;
     let stream: MediaStream | null = null;
+    let lastError: any = null;
 
-    try {
-      if (deviceId) {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: deviceId } },
-          audio: false,
-        });
-      } else {
-        try {
-          // Attempt 1: Optimal resolution + front camera
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: 'user',
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
-            audio: false,
-          });
-        } catch (e1) {
-          console.warn('Optimal camera constraints failed, trying basic user-facing:', e1);
-          try {
-            // Attempt 2: Basic facing mode
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: 'user' },
-              audio: false,
-            });
-          } catch (e2) {
-            console.warn('facingMode failed, trying generic video constraint:', e2);
-            // Attempt 3: Generic fallback
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: false,
-            });
+    // Define progressive constraint candidates from most specific/optimal to most permissive
+    const candidateConstraints: MediaStreamConstraints[] = [];
+
+    if (targetDeviceId) {
+      // 1. Exact device ID requested
+      candidateConstraints.push({
+        video: { deviceId: { exact: targetDeviceId } },
+        audio: false,
+      });
+      // 2. Ideal device ID
+      candidateConstraints.push({
+        video: { deviceId: { ideal: targetDeviceId } },
+        audio: false,
+      });
+    }
+
+    // 3. User-facing HD camera (ideal constraints)
+    candidateConstraints.push({
+      video: {
+        facingMode: { ideal: 'user' },
+        width: { ideal: 1280, min: 640 },
+        height: { ideal: 720, min: 480 },
+      },
+      audio: false,
+    });
+
+    // 4. Basic user-facing camera
+    candidateConstraints.push({
+      video: { facingMode: 'user' },
+      audio: false,
+    });
+
+    // 5. Generic video with no constraints (compatible with OBS, virtual cameras, external USB webcams)
+    candidateConstraints.push({
+      video: true,
+      audio: false,
+    });
+
+    // 6. Minimal fallback constraint
+    candidateConstraints.push({
+      video: { width: { min: 320 }, height: { min: 240 } },
+      audio: false,
+    });
+
+    // Iterate through candidates until one succeeds
+    for (let i = 0; i < candidateConstraints.length; i++) {
+      try {
+        const candidate = candidateConstraints[i];
+        stream = await navigator.mediaDevices.getUserMedia(candidate);
+        if (stream && stream.getVideoTracks().length > 0) {
+          const track = stream.getVideoTracks()[0];
+          if (track.readyState !== 'ended') {
+            break;
           }
         }
-      }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Camera constraint candidate ${i + 1} failed:`, err?.name, err?.message);
 
+        // If permission was explicitly denied, do not spam other constraints
+        if (
+          err?.name === 'NotAllowedError' ||
+          err?.name === 'PermissionDeniedError' ||
+          err?.name === 'SecurityError'
+        ) {
+          break;
+        }
+
+        // If targetDeviceId failed, reset it so future attempts use generic devices
+        if (targetDeviceId && i <= 1) {
+          setSettings((prev) => ({ ...prev, deviceId: '' }));
+        }
+      }
+    }
+
+    try {
       if (!stream) {
-        throw new Error('Unable to access video stream from camera hardware.');
+        throw lastError || new Error('Unable to access video stream from camera hardware.');
       }
 
       streamRef.current = stream;
@@ -212,7 +272,7 @@ export default function App() {
         try {
           await videoRef.current.play();
         } catch (playErr) {
-          console.warn('Video play interrupted:', playErr);
+          console.warn('Video play note:', playErr);
         }
       }
 
@@ -224,12 +284,21 @@ export default function App() {
       console.error('Camera getUserMedia error:', err);
       stopCameraStream();
 
-      const errMsg = err.message || '';
-      const errName = err.name || '';
+      const errMsg = err?.message || '';
+      const errName = err?.name || '';
       const isSystemDenied =
         errMsg.toLowerCase().includes('system') ||
         errMsg.toLowerCase().includes('permission denied by system') ||
         errMsg.toLowerCase().includes('blocked by os');
+
+      const isNotFound =
+        errName === 'NotFoundError' ||
+        errName === 'DevicesNotFoundError' ||
+        errName === 'OverconstrainedError' ||
+        errMsg.toLowerCase().includes('not found') ||
+        errMsg.toLowerCase().includes('requested device not found') ||
+        errMsg.toLowerCase().includes('no device') ||
+        errMsg.toLowerCase().includes('could not start video source');
 
       if (
         errName === 'NotAllowedError' ||
@@ -241,24 +310,26 @@ export default function App() {
         setAppState('CAMERA_DENIED');
         setPermissionError(
           isSystemDenied
-            ? 'Camera blocked by your Computer System settings (macOS Privacy & Security > Camera, or Windows Camera Settings). Please enable camera permission for your browser and click "Try Again", or open in a new tab.'
-            : 'Camera access was denied by your browser. Please click the camera/lock icon in the address bar to allow access.'
+            ? 'Camera access is blocked by your operating system privacy settings (macOS Privacy & Security > Camera, or Windows Camera Settings). Please allow camera access and try again.'
+            : 'Camera access was denied by your browser. Please click the camera/lock icon in the browser address bar to allow access.'
         );
         if (isSystemDenied) {
           setShowPermissionGuideModal(true);
         }
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      } else if (isNotFound) {
         setCameraPermission('unavailable');
         setAppState('CAMERA_ERROR');
-        setPermissionError('No video camera device was found on this system.');
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setPermissionError(
+          'No working camera device was found or the requested webcam was disconnected. Please connect a webcam or select another video device.'
+        );
+      } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
         setCameraPermission('unavailable');
         setAppState('CAMERA_ERROR');
-        setPermissionError('Camera is already in use by another application or video tab.');
+        setPermissionError('The camera is currently in use by another application or video tab. Please close other apps and try again.');
       } else {
-        setCameraPermission('denied');
-        setAppState('CAMERA_DENIED');
-        setPermissionError(err.message || 'Failed to acquire camera permission.');
+        setCameraPermission('unavailable');
+        setAppState('CAMERA_ERROR');
+        setPermissionError(errMsg || 'Failed to acquire camera stream.');
       }
     }
   }, [settings.deviceId, stopCameraStream, refreshDevices]);

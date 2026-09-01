@@ -305,24 +305,68 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
           </div>
         )}
 
-        {/* State: Camera Unavailable */}
+        {/* State: Camera Unavailable / Not Found */}
         {cameraPermission === 'unavailable' && (
-          <div className="text-center p-6 max-w-md space-y-3 bg-slate-900/80 border border-slate-800 rounded-2xl m-4">
-            <div className="w-14 h-14 rounded-2xl bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
+          <div className="text-center p-6 max-w-md space-y-4 bg-slate-900/90 border border-slate-800 rounded-2xl m-4 shadow-xl">
+            <div className="w-14 h-14 rounded-2xl bg-amber-950/60 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
               <CameraOff className="w-7 h-7" />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <h3 className="text-base font-bold text-white">Camera Device Not Found</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                No camera device was detected on your system. Please connect a webcam or enable camera drivers.
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {permissionError ||
+                  'No working video camera was detected on this device. Please connect a webcam or select another video input.'}
               </p>
             </div>
-            <button
-              onClick={onStartCameraAndTranslation}
-              className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold text-xs"
-            >
-              Retry Detection
-            </button>
+
+            {/* If there are multiple detected devices, let user pick */}
+            {availableDevices.length > 0 && (
+              <div className="space-y-1.5 text-left bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                <label className="text-[11px] font-semibold text-slate-400">Select Available Camera:</label>
+                <select
+                  value={settings.deviceId}
+                  onChange={(e) => onSwitchDevice(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-slate-900 border border-slate-700 text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="">Default System Camera</option>
+                  {availableDevices.map((device, index) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Camera ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <button
+                id="camera-retry-detection-button"
+                onClick={onStartCameraAndTranslation}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Detection</span>
+              </button>
+              <button
+                id="camera-unavailable-guide-button"
+                onClick={onOpenPermissionGuide}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <HelpCircle className="w-3.5 h-3.5 text-purple-400" />
+                <span>Camera Guide</span>
+              </button>
+              {typeof window !== 'undefined' && window.self !== window.top && (
+                <a
+                  href={window.location.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Open in New Tab</span>
+                </a>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -39,6 +39,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
 }) => {
   const previewSigns = ASL_REFERENCE_SIGNS.slice(0, 6);
   const isDenied = cameraPermission === 'denied' || cameraPermission === 'blocked';
+  const isUnavailable = cameraPermission === 'unavailable';
   const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   return (
@@ -88,6 +89,50 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                 >
                   <HelpCircle className="w-3.5 h-3.5 text-purple-400" />
                   <span>How to Allow Camera</span>
+                </button>
+              )}
+              {isInIframe && (
+                <a
+                  href={window.location.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Open in New Tab</span>
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Camera Unavailable / Not Found Banner */}
+        {isUnavailable && (
+          <div className="max-w-xl mx-auto p-4 sm:p-5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-left space-y-3 shadow-xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2.5 text-amber-300 font-bold text-sm">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <span>Camera Hardware Note</span>
+            </div>
+            <p className="text-xs text-amber-200/90 leading-relaxed">
+              {permissionError ||
+                'No working video camera was detected. Please connect a webcam or enable camera drivers in your browser.'}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                id="landing-retry-camera-unavailable-btn"
+                onClick={onStartCamera}
+                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Camera Detection</span>
+              </button>
+              {onOpenPermissionGuide && (
+                <button
+                  onClick={onOpenPermissionGuide}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Camera Guide</span>
                 </button>
               )}
               {isInIframe && (
