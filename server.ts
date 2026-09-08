@@ -595,10 +595,6 @@ Return JSON strictly conforming to schema.`;
       cadence_state: 'rest',
       latency_ms: Date.now() - startTime,
     };
-      confidence: 0.72,
-      cadence_state: 'signing',
-      latency_ms: Date.now() - startTime,
-    };
 
     const data: Record<string, any> = safeParseGeminiJson(response.text, fallbackSentence);
     data.latency_ms = Date.now() - startTime;
