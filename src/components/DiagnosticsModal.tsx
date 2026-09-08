@@ -108,7 +108,7 @@ Speech Synthesis Supported: ${hasSpeechApi ? 'YES' : 'NO'}
 Active API Base URL: ${currentApiBase || 'Same-origin (/api)'}
 Backend Health: ${serverHealth.status}
 Gemini Configured on Server: ${serverHealth.geminiConfigured ? 'YES' : 'NO'}
-Active Model: ${serverHealth.model || 'gemini-3.7-flash'}
+Active Model: ${serverHealth.model || 'gemini-3.8-flash'}
 Current Page URL: ${currentUrl}
 User Agent: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'}
 Security Architecture: Server-Side Secret Isolation (GEMINI_API_KEY never in frontend)

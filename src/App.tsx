@@ -11,7 +11,9 @@ import {
   ASLRecognitionResult,
   TranslationHistoryItem,
   CameraSettings,
-  ServerHealthStatus
+  ServerHealthStatus,
+  ActiveSentence,
+  ActiveSentenceWord
 } from './types';
 import { aslRecognitionService, getApiBaseUrl } from './services/aslRecognitionService';
 import { speechService } from './services/speechService';
@@ -20,12 +22,36 @@ import { LandingHero } from './components/LandingHero';
 import { CameraPanel } from './components/CameraPanel';
 import { TranslationPanel } from './components/TranslationPanel';
 import { TranslationHistory } from './components/TranslationHistory';
+import { ActiveSentenceArea } from './components/ActiveSentenceArea';
 import { ASLReferenceModal } from './components/ASLReferenceModal';
 import { PermissionGuideModal } from './components/PermissionGuideModal';
 import { PrivacyModal } from './components/PrivacyModal';
 import { DiagnosticsModal } from './components/DiagnosticsModal';
 import { ConfigBanner } from './components/ConfigBanner';
 import { Sparkles, ShieldCheck, Heart, Volume2 } from 'lucide-react';
+
+/**
+ * Format an array of single words into a clean, punctuated English sentence
+ */
+function assembleSentence(words: string[], isComplete = false): string {
+  if (!words || words.length === 0) return '';
+  const formatted = words.map((w, index) => {
+    const clean = w.trim().replace(/[.,!?;:]+$/, '');
+    if (index === 0) {
+      return clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+    if (clean.toLowerCase() === 'i') return 'I';
+    if (clean.toUpperCase() === clean && clean.length > 1) return clean;
+    return clean.toLowerCase();
+  });
+  const joined = formatted.join(' ');
+  if (isComplete) {
+    return joined.endsWith('.') || joined.endsWith('?') || joined.endsWith('!')
+      ? joined
+      : `${joined}.`;
+  }
+  return joined;
+}
 
 export default function App() {
   // Explicit Application Lifecycle State (Initial state is strictly READY)
@@ -45,11 +71,21 @@ export default function App() {
   const [history, setHistory] = useState<TranslationHistoryItem[]>([]);
   const [visualFlash, setVisualFlash] = useState<boolean>(false);
 
+  // Active Sentence Grouping State
+  const [activeSentence, setActiveSentence] = useState<ActiveSentence>({
+    words: [],
+    sentenceText: '',
+    lastWordTimestamp: null,
+    isComplete: false,
+  });
+  const [sentenceWindowMs, setSentenceWindowMs] = useState<number>(5000);
+  const [sentenceTimeRemainingMs, setSentenceTimeRemainingMs] = useState<number>(0);
+
   // Server health state
   const [serverHealth, setServerHealth] = useState<ServerHealthStatus>({
     status: 'ready',
     geminiConfigured: true,
-    model: 'gemini-3.7-flash',
+    model: 'gemini-3.8-flash',
   });
 
   // Settings
@@ -99,7 +135,7 @@ export default function App() {
         setServerHealth({
           status: 'static_client',
           geminiConfigured: false,
-          model: 'gemini-3.7-flash',
+          model: 'gemini-3.8-flash',
         });
       });
 
@@ -360,6 +396,122 @@ export default function App() {
   }, [rateLimitCooldownSeconds]);
 
   /**
+   * Handle incoming single-word translation and automatically group into
+   * an active sentence if received within the short time window.
+   */
+  const handleIncomingSingleWord = useCallback(
+    (word: string, gloss?: string) => {
+      const now = Date.now();
+
+      setActiveSentence((prev) => {
+        const timeDiff = prev.lastWordTimestamp ? now - prev.lastWordTimestamp : Infinity;
+
+        // Deduplication guard: ignore identical word if within 1.2s to prevent duplicate frame capture of same held sign
+        const lastWord = prev.words[prev.words.length - 1];
+        if (lastWord && timeDiff < 1200 && lastWord.word.toLowerCase() === word.toLowerCase()) {
+          return prev;
+        }
+
+        // If within the time window and not explicitly completed, append word
+        if (timeDiff <= sentenceWindowMs && prev.words.length > 0 && !prev.isComplete) {
+          const updatedWords: ActiveSentenceWord[] = [
+            ...prev.words,
+            {
+              id: `w-${now}-${Math.random().toString(36).slice(2, 6)}`,
+              word,
+              gloss,
+              timestamp: now,
+            },
+          ];
+          return {
+            words: updatedWords,
+            sentenceText: assembleSentence(updatedWords.map((w) => w.word), false),
+            lastWordTimestamp: now,
+            isComplete: false,
+          };
+        }
+
+        // Otherwise start fresh active sentence with this single word
+        const newWords: ActiveSentenceWord[] = [
+          {
+            id: `w-${now}-${Math.random().toString(36).slice(2, 6)}`,
+            word,
+            gloss,
+            timestamp: now,
+          },
+        ];
+        return {
+          words: newWords,
+          sentenceText: assembleSentence([word], false),
+          lastWordTimestamp: now,
+          isComplete: false,
+        };
+      });
+    },
+    [sentenceWindowMs]
+  );
+
+  /**
+   * Active sentence time window countdown and auto-completion
+   */
+  useEffect(() => {
+    if (activeSentence.words.length === 0 || activeSentence.isComplete || !activeSentence.lastWordTimestamp) {
+      setSentenceTimeRemainingMs(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - (activeSentence.lastWordTimestamp || 0);
+      const remaining = Math.max(0, sentenceWindowMs - elapsed);
+      setSentenceTimeRemainingMs(remaining);
+
+      if (remaining === 0) {
+        clearInterval(interval);
+        setActiveSentence((prev) => {
+          if (prev.isComplete || prev.words.length === 0) return prev;
+          const completeSentence = assembleSentence(prev.words.map((w) => w.word), true);
+
+          // If there are 2 or more words in the completed sentence, record it to session history
+          if (prev.words.length >= 2) {
+            const now = new Date();
+            const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const historyItem: TranslationHistoryItem = {
+              id: `sentence-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              timestamp: Date.now(),
+              formattedTime,
+              recognized_signs: prev.words.map((w) => w.gloss || w.word),
+              english_translation: completeSentence,
+              confidence: 0.95,
+              is_reliable: true,
+              is_sentence: true,
+            };
+            setHistory((hist) => [historyItem, ...hist]);
+
+            // Auto speak full sentence if autoSpeak is enabled
+            if (settings.autoSpeak) {
+              speechService.speak(completeSentence);
+            }
+          }
+
+          return {
+            ...prev,
+            sentenceText: completeSentence,
+            isComplete: true,
+          };
+        });
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [
+    activeSentence.lastWordTimestamp,
+    activeSentence.isComplete,
+    activeSentence.words.length,
+    sentenceWindowMs,
+    settings.autoSpeak,
+  ]);
+
+  /**
    * Process a single translation cycle from the current video frames
    */
   const processFrameSequence = useCallback(
@@ -437,6 +589,16 @@ export default function App() {
           setVisualFlash(true);
           setTimeout(() => setVisualFlash(false), 320);
 
+          // Check if this translation is a single word to group into active sentence
+          const rawTranslation = result.english_translation.trim();
+          const cleanWord = rawTranslation.replace(/[.,!?;:]+$/, '').trim();
+          const wordsInResult = cleanWord.split(/\s+/).filter(Boolean);
+          const isSingleWord = wordsInResult.length === 1;
+
+          if (isSingleWord && cleanWord.length > 0) {
+            handleIncomingSingleWord(cleanWord, result.recognized_sign);
+          }
+
           // Auto speak if enabled
           if (settings.autoSpeak) {
             speechService.speak(result.english_translation);
@@ -471,7 +633,7 @@ export default function App() {
         setRecognitionStatus('idle');
       }
     },
-    [cameraPermission, history, settings.autoSpeak]
+    [cameraPermission, history, settings.autoSpeak, handleIncomingSingleWord]
   );
 
   /**
@@ -547,6 +709,67 @@ export default function App() {
     setCurrentResult(null);
     setRecognitionStatus('idle');
   };
+
+  const handleClearActiveSentence = useCallback(() => {
+    setActiveSentence({
+      words: [],
+      sentenceText: '',
+      lastWordTimestamp: null,
+      isComplete: false,
+    });
+    setSentenceTimeRemainingMs(0);
+  }, []);
+
+  const handleCompleteActiveSentence = useCallback(() => {
+    setActiveSentence((prev) => {
+      if (prev.words.length === 0) return prev;
+      const completeSentence = assembleSentence(prev.words.map((w) => w.word), true);
+      if (prev.words.length >= 2) {
+        const now = new Date();
+        const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const historyItem: TranslationHistoryItem = {
+          id: `sentence-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: Date.now(),
+          formattedTime,
+          recognized_signs: prev.words.map((w) => w.gloss || w.word),
+          english_translation: completeSentence,
+          confidence: 0.95,
+          is_reliable: true,
+          is_sentence: true,
+        };
+        setHistory((hist) => [historyItem, ...hist]);
+      }
+      return {
+        ...prev,
+        sentenceText: completeSentence,
+        isComplete: true,
+      };
+    });
+    setSentenceTimeRemainingMs(0);
+  }, []);
+
+  const handleRemoveActiveSentenceWord = useCallback((id: string) => {
+    setActiveSentence((prev) => {
+      const updated = prev.words.filter((w) => w.id !== id);
+      if (updated.length === 0) {
+        return {
+          words: [],
+          sentenceText: '',
+          lastWordTimestamp: null,
+          isComplete: false,
+        };
+      }
+      return {
+        ...prev,
+        words: updated,
+        sentenceText: assembleSentence(updated.map((w) => w.word), prev.isComplete),
+      };
+    });
+  }, []);
+
+  const handleChangeSentenceWindow = useCallback((windowMs: number) => {
+    setSentenceWindowMs(windowMs);
+  }, []);
 
   const handleClearHistory = () => {
     setHistory([]);
@@ -630,8 +853,21 @@ export default function App() {
                 />
               </div>
 
-              {/* Right Column: English Translation Display (5 cols on lg) */}
-              <div className="lg:col-span-5 w-full">
+              {/* Right Column: Active Sentence & English Translation (5 cols on lg) */}
+              <div className="lg:col-span-5 w-full space-y-6">
+                {/* Active Sentence Area */}
+                <ActiveSentenceArea
+                  activeSentence={activeSentence}
+                  timeRemainingMs={sentenceTimeRemainingMs}
+                  timeWindowMs={sentenceWindowMs}
+                  onChangeTimeWindow={handleChangeSentenceWindow}
+                  onClearSentence={handleClearActiveSentence}
+                  onCompleteSentence={handleCompleteActiveSentence}
+                  onRemoveWord={handleRemoveActiveSentenceWord}
+                  onSpeakSentence={handleSpeakText}
+                />
+
+                {/* English Translation Display */}
                 <TranslationPanel
                   currentResult={currentResult}
                   recognitionStatus={recognitionStatus}

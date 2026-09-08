@@ -142,7 +142,7 @@ ${contextPrompt}
 Identify the ASL sign(s) or fingerspelling performed. Return structured JSON adhering to the specified schema.`;
 
     // Supported active models in order of preferred speed and latency
-    const allModels = ['gemini-3.1-flash-lite', 'gemini-3.7-flash', 'gemini-flash-latest'];
+    const allModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
     
     // Sort available models first (filter out models currently under active 503/429 cooldown, unless all are on cooldown)
     let modelsToTry = allModels.filter(isModelAvailable);

@@ -151,6 +151,13 @@ export const TranslationHistory: React.FC<TranslationHistoryProps> = ({
                       {item.formattedTime}
                     </span>
 
+                    {item.is_sentence && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-purple-400" />
+                        <span>Assembled Sentence</span>
+                      </span>
+                    )}
+
                     {item.recognized_signs && item.recognized_signs.length > 0 && (
                       <span className="text-[11px] font-bold text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
                         ASL: {item.recognized_signs.join(' • ')}

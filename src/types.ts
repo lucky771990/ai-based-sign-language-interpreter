@@ -53,6 +53,21 @@ export interface TranslationHistoryItem {
   is_reliable: boolean;
   hand_shape_analysis?: string;
   movement_description?: string;
+  is_sentence?: boolean;
+}
+
+export interface ActiveSentenceWord {
+  id: string;
+  word: string;
+  gloss?: string;
+  timestamp: number;
+}
+
+export interface ActiveSentence {
+  words: ActiveSentenceWord[];
+  sentenceText: string;
+  lastWordTimestamp: number | null;
+  isComplete: boolean;
 }
 
 export interface ASLReferenceSign {
