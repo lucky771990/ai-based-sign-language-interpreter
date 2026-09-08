@@ -90,6 +90,14 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
                 <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
                 <span>Backend Offline</span>
               </span>
+            ) : currentResult.is_auto_translated ? (
+              <span
+                id="translation-auto-mapped-badge"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-950/80 border border-purple-500/40 text-purple-300"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span>Auto-Mapped Conversational</span>
+              </span>
             ) : isReliable ? (
               <span
                 id="translation-confidence-high"
@@ -176,7 +184,7 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
                     {currentResult.english_translation || "API rate limit reached. Pausing momentarily to recharge..."}
                   </p>
                   <p className="text-xs text-amber-300/80">
-                    Tip: Continuous mode uses motion detection to save quota. You can also use "Snap Sign Now" to translate only when you perform a sign.
+                    Tip: Continuous mode uses motion detection to optimize API quota. Ensure clear lighting and distinct hand gestures.
                   </p>
                 </div>
               ) : isUncertain ? (

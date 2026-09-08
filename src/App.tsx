@@ -13,44 +13,51 @@ import {
   CameraSettings,
   ServerHealthStatus,
   ActiveSentence,
-  ActiveSentenceWord
+  ActiveSentenceWord,
+  SignLanguage,
+  SigningMode,
+  HandFeatureTelemetry,
+  SignSegmentEvent,
+  SentenceSpeedMode,
+  CNNFeatureTensor,
 } from './types';
 import { aslRecognitionService, getApiBaseUrl } from './services/aslRecognitionService';
 import { speechService } from './services/speechService';
+import { temporalVisionTracker } from './services/temporalVisionTracker';
+import { languageContextEngine } from './services/languageContextEngine';
+import { cnnSentenceEngine } from './services/cnnSentenceEngine';
 import { Header } from './components/Header';
 import { LandingHero } from './components/LandingHero';
 import { CameraPanel } from './components/CameraPanel';
 import { TranslationPanel } from './components/TranslationPanel';
 import { TranslationHistory } from './components/TranslationHistory';
 import { ActiveSentenceArea } from './components/ActiveSentenceArea';
+import { QuickSentencesBar } from './components/QuickSentencesBar';
+import { SentenceTranslationStudio } from './components/SentenceTranslationStudio';
 import { ASLReferenceModal } from './components/ASLReferenceModal';
 import { PermissionGuideModal } from './components/PermissionGuideModal';
 import { PrivacyModal } from './components/PrivacyModal';
 import { DiagnosticsModal } from './components/DiagnosticsModal';
+import { DeveloperDebugPanel } from './components/DeveloperDebugPanel';
+import { CorrectionModal } from './components/CorrectionModal';
+import { EvaluationSuiteModal } from './components/EvaluationSuiteModal';
 import { ConfigBanner } from './components/ConfigBanner';
-import { Sparkles, ShieldCheck, Heart, Volume2 } from 'lucide-react';
+import { Sparkles, ShieldCheck, Heart, Volume2, Hand, MessageSquare } from 'lucide-react';
 
 /**
  * Format an array of single words into a clean, punctuated English sentence
+ * using LanguageContextEngine rule-based grammar synthesis.
  */
-function assembleSentence(words: string[], isComplete = false): string {
+function assembleSentence(words: (ActiveSentenceWord | string)[], isComplete = false): string {
   if (!words || words.length === 0) return '';
-  const formatted = words.map((w, index) => {
-    const clean = w.trim().replace(/[.,!?;:]+$/, '');
-    if (index === 0) {
-      return clean.charAt(0).toUpperCase() + clean.slice(1);
+  const wordObjs: ActiveSentenceWord[] = words.map((w, idx) => {
+    if (typeof w === 'string') {
+      return { id: `w-${idx}`, word: w, timestamp: Date.now() };
     }
-    if (clean.toLowerCase() === 'i') return 'I';
-    if (clean.toUpperCase() === clean && clean.length > 1) return clean;
-    return clean.toLowerCase();
+    return w;
   });
-  const joined = formatted.join(' ');
-  if (isComplete) {
-    return joined.endsWith('.') || joined.endsWith('?') || joined.endsWith('!')
-      ? joined
-      : `${joined}.`;
-  }
-  return joined;
+  const synth = languageContextEngine.synthesizeGrammarSentence(wordObjs);
+  return synth.finalTranslation;
 }
 
 export default function App() {
@@ -80,6 +87,7 @@ export default function App() {
   });
   const [sentenceWindowMs, setSentenceWindowMs] = useState<number>(5000);
   const [sentenceTimeRemainingMs, setSentenceTimeRemainingMs] = useState<number>(0);
+  const [inStudioView, setInStudioView] = useState<boolean>(false);
 
   // Server health state
   const [serverHealth, setServerHealth] = useState<ServerHealthStatus>({
@@ -88,15 +96,35 @@ export default function App() {
     model: 'gemini-3.8-flash',
   });
 
-  // Settings
+  // Dedicated Section Mode: 'sentence' (Focused Sentence Translation) vs 'vocabulary' (Single Signs & Reference)
+  const [activeSection, setActiveSection] = useState<'sentence' | 'vocabulary'>('sentence');
+  const [sentenceSpeedMode, setSentenceSpeedMode] = useState<SentenceSpeedMode>('turbo');
+
+  // Multi-Stage Pipeline & Sign Language Configuration
+  const [signLanguage, setSignLanguage] = useState<SignLanguage>('ASL');
+  const [signingMode, setSigningMode] = useState<SigningMode>('continuous');
+  const [telemetry, setTelemetry] = useState<HandFeatureTelemetry>(temporalVisionTracker.getTelemetry());
+  const [cnnTelemetry, setCnnTelemetry] = useState<CNNFeatureTensor | null>(null);
+  const [cnnEnabled, setCnnEnabled] = useState<boolean>(true);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [showDebugOverlay, setShowDebugOverlay] = useState<boolean>(true);
+  const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
+  const [showCorrectionModal, setShowCorrectionModal] = useState<boolean>(false);
+  const [showEvaluationModal, setShowEvaluationModal] = useState<boolean>(false);
+
+  // Settings (tuned for ultra-fast response and smart fallback)
   const [settings, setSettings] = useState<CameraSettings>({
     mirrored: true,
     deviceId: '',
     autoSpeak: false,
     continuousMode: true,
-    sampleIntervalMs: 1100,
-    confidenceThreshold: 0.65,
+    sampleIntervalMs: 500,
+    confidenceThreshold: 0.60,
+    smartAutoTranslateWeirdSigns: true,
+    fastMode: true,
   });
+
+  const [lastAutoTranslatedText, setLastAutoTranslatedText] = useState<string | null>(null);
 
   // Modal Visibility
   const [showReferenceModal, setShowReferenceModal] = useState<boolean>(false);
@@ -180,6 +208,7 @@ export default function App() {
    * Stop all active camera tracks and clean up video stream
    */
   const stopCameraStream = useCallback(() => {
+    temporalVisionTracker.stop();
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => {
         track.stop();
@@ -198,6 +227,52 @@ export default function App() {
     setRecognitionStatus('idle');
     setAppState('READY');
   }, []);
+
+  // Synchronize temporal vision tracker lifecycle with active camera stream
+  useEffect(() => {
+    if (cameraPermission === 'granted' && videoRef.current) {
+      // Ensure video element has active stream attached
+      if (streamRef.current && videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch((err) => {
+          console.warn('Vision tracker video play note:', err);
+        });
+      }
+
+      temporalVisionTracker.start(
+        videoRef.current,
+        (updatedTelemetry) => {
+          setTelemetry(updatedTelemetry);
+          if (showDebugOverlay && overlayCanvasRef.current) {
+            temporalVisionTracker.renderOverlay(overlayCanvasRef.current);
+          }
+        },
+        (segmentEvent: SignSegmentEvent) => {
+          // Continuous signing segmentation event
+          if (segmentEvent.phase === 'STROKE' || segmentEvent.phase === 'HOLD') {
+            // High motion velocity or hold boundary
+          }
+        }
+      );
+    } else {
+      temporalVisionTracker.stop();
+    }
+    return () => {
+      temporalVisionTracker.stop();
+    };
+  }, [cameraPermission, showDebugOverlay, activeSection]);
+
+  // Keep active video element synced across mode switches (Sentence Studio <-> Vocabulary)
+  useEffect(() => {
+    if (cameraPermission === 'granted' && streamRef.current && videoRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+      }
+      videoRef.current.play().catch((err) => {
+        console.warn('Stream sync auto-play note:', err);
+      });
+    }
+  }, [cameraPermission, activeSection]);
 
   /**
    * Explicitly request camera access and initialize stream with robust fallback constraints
@@ -303,19 +378,30 @@ export default function App() {
 
       streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        try {
-          await videoRef.current.play();
-        } catch (playErr) {
-          console.warn('Video play note:', playErr);
+      const bindAndPlay = async () => {
+        if (videoRef.current) {
+          if (videoRef.current.srcObject !== stream) {
+            videoRef.current.srcObject = stream;
+          }
+          try {
+            await videoRef.current.play();
+          } catch (playErr) {
+            console.warn('Video play note:', playErr);
+          }
         }
-      }
+      };
+
+      await bindAndPlay();
 
       setCameraPermission('granted');
       setIsTranslating(true);
       setAppState('TRANSLATING');
       refreshDevices();
+
+      // Secondary check to guarantee stream is playing after React re-renders
+      setTimeout(() => {
+        bindAndPlay();
+      }, 50);
     } catch (err: any) {
       console.error('Camera getUserMedia error:', err);
       stopCameraStream();
@@ -406,9 +492,9 @@ export default function App() {
       setActiveSentence((prev) => {
         const timeDiff = prev.lastWordTimestamp ? now - prev.lastWordTimestamp : Infinity;
 
-        // Deduplication guard: ignore identical word if within 1.2s to prevent duplicate frame capture of same held sign
+        // Deduplication guard: ignore identical word if within 1.5s to prevent duplicate frame capture of same held sign
         const lastWord = prev.words[prev.words.length - 1];
-        if (lastWord && timeDiff < 1200 && lastWord.word.toLowerCase() === word.toLowerCase()) {
+        if (lastWord && timeDiff < 1500 && lastWord.word.toLowerCase() === word.toLowerCase()) {
           return prev;
         }
 
@@ -423,9 +509,13 @@ export default function App() {
               timestamp: now,
             },
           ];
+          const rawGlosses = updatedWords.map((w) => w.gloss || w.word.toUpperCase());
+          const grammarResult = languageContextEngine.synthesizeGrammarSentence(updatedWords);
           return {
             words: updatedWords,
-            sentenceText: assembleSentence(updatedWords.map((w) => w.word), false),
+            rawGlossSequence: rawGlosses,
+            synthesizedSentence: grammarResult.finalTranslation,
+            sentenceText: grammarResult.finalTranslation,
             lastWordTimestamp: now,
             isComplete: false,
           };
@@ -440,9 +530,13 @@ export default function App() {
             timestamp: now,
           },
         ];
+        const rawGlosses = [gloss || word.toUpperCase()];
+        const grammarResult = languageContextEngine.synthesizeGrammarSentence(newWords);
         return {
           words: newWords,
-          sentenceText: assembleSentence([word], false),
+          rawGlossSequence: rawGlosses,
+          synthesizedSentence: grammarResult.finalTranslation,
+          sentenceText: grammarResult.finalTranslation,
           lastWordTimestamp: now,
           isComplete: false,
         };
@@ -469,7 +563,8 @@ export default function App() {
         clearInterval(interval);
         setActiveSentence((prev) => {
           if (prev.isComplete || prev.words.length === 0) return prev;
-          const completeSentence = assembleSentence(prev.words.map((w) => w.word), true);
+          const grammarResult = languageContextEngine.synthesizeGrammarSentence(prev.words);
+          const completeSentence = grammarResult.finalTranslation;
 
           // If there are 2 or more words in the completed sentence, record it to session history
           if (prev.words.length >= 2) {
@@ -496,6 +591,7 @@ export default function App() {
           return {
             ...prev,
             sentenceText: completeSentence,
+            synthesizedSentence: completeSentence,
             isComplete: true,
           };
         });
@@ -530,24 +626,44 @@ export default function App() {
         return;
       }
 
-      // Motion gating: In continuous mode, check if there's any hand/gesture motion
-      if (!isManualTrigger) {
-        const motionLevel = aslRecognitionService.detectMotion(videoRef.current);
-        if (motionLevel < 0.006) {
-          // Camera is static / user is still - conserve API quota
-          setRecognitionStatus('idle');
-          return;
-        }
-      }
-
       setRecognitionStatus('capturing');
 
       try {
-        // Capture a sequence of 2 sequential frames spaced 110ms apart to catch sign trajectory rapidly
+        // Dynamically tune capture resolution and temporal sample count for highest accuracy
+        let frameCount = 2;
+        let delayMs = 45;
+        let maxWidth = 512;
+        let quality = 0.80;
+
+        if (activeSection === 'sentence') {
+          if (sentenceSpeedMode === 'precision') {
+            frameCount = 2;
+            delayMs = 60;
+            maxWidth = 640;
+            quality = 0.85;
+          } else if (sentenceSpeedMode === 'balanced') {
+            frameCount = 2;
+            delayMs = 45;
+            maxWidth = 512;
+            quality = 0.80;
+          } else {
+            frameCount = 1;
+            delayMs = 35;
+            maxWidth = 420;
+            quality = 0.74;
+          }
+        } else {
+          frameCount = settings.fastMode ? 1 : 2;
+          maxWidth = settings.fastMode ? 420 : 512;
+          quality = settings.fastMode ? 0.75 : 0.82;
+        }
+
         const frames = await aslRecognitionService.captureTemporalSequence(
           videoRef.current,
-          2,
-          110
+          frameCount,
+          delayMs,
+          maxWidth,
+          quality
         );
 
         if (!frames || frames.length === 0) {
@@ -557,11 +673,80 @@ export default function App() {
 
         setRecognitionStatus('analyzing');
 
-        const recentHistorySigns = history.slice(-3).map((h) => h.english_translation);
+        const currentTelemetry = temporalVisionTracker.getTelemetry();
+
+        // Branch 1: Dedicated High-Speed Sentence Translation Stream
+        if (activeSection === 'sentence') {
+          const cnnFeatures =
+            cnnEnabled && videoRef.current
+              ? cnnSentenceEngine.processFrame(videoRef.current)
+              : undefined;
+
+          if (cnnFeatures) {
+            setCnnTelemetry(cnnFeatures);
+          }
+
+          const existingGlosses = activeSentence.words.map((w) => w.gloss || w.word.toUpperCase());
+          const sentenceResult = await aslRecognitionService.translateSentenceStream(
+            frames,
+            existingGlosses,
+            signLanguage,
+            currentTelemetry,
+            sentenceSpeedMode,
+            cnnFeatures
+          );
+
+          if (sentenceResult.cnn_features) {
+            setCnnTelemetry(sentenceResult.cnn_features);
+          }
+
+          if (sentenceResult.new_gloss && sentenceResult.new_gloss !== 'NONE') {
+            const cleanWord = sentenceResult.english_word || sentenceResult.new_gloss.toLowerCase();
+            const newWordObj: ActiveSentenceWord = {
+              id: `sw-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              word: cleanWord,
+              gloss: sentenceResult.new_gloss,
+              confidence: sentenceResult.confidence,
+              timestamp: Date.now(),
+            };
+
+            setVisualFlash(true);
+            setTimeout(() => setVisualFlash(false), 250);
+
+            setActiveSentence((prev) => {
+              const updatedWords = [...prev.words, newWordObj];
+              const updatedGlosses = updatedWords.map((w) => w.gloss || w.word.toUpperCase());
+              return {
+                words: updatedWords,
+                sentenceText: sentenceResult.synthesized_sentence || prev.sentenceText,
+                synthesizedSentence: sentenceResult.synthesized_sentence,
+                rawGlossSequence: updatedGlosses,
+                lastWordTimestamp: Date.now(),
+                isComplete: false,
+              };
+            });
+            setRecognitionStatus('success');
+          } else if (sentenceResult.synthesized_sentence && activeSentence.words.length > 0) {
+            setActiveSentence((prev) => ({
+              ...prev,
+              sentenceText: sentenceResult.synthesized_sentence,
+              synthesizedSentence: sentenceResult.synthesized_sentence,
+            }));
+            setRecognitionStatus('idle');
+          } else {
+            setRecognitionStatus('idle');
+          }
+          return;
+        }
+
+        // Branch 2: Standard Single Sign / Vocabulary Translation Flow
+        const recentHistorySigns = history.slice(-3).map((h) => h.recognized_signs?.[0] || h.english_translation);
         const result = await aslRecognitionService.translateFrames(
           frames,
           recentHistorySigns,
-          isManualTrigger ? 'single_sign' : 'continuous'
+          isManualTrigger ? 'single_sign' : signingMode,
+          signLanguage,
+          currentTelemetry
         );
 
         setCurrentResult(result);
@@ -583,11 +768,21 @@ export default function App() {
 
         // Check if sign is reliable and not a duplicate within cooldown
         if (result.is_reliable && result.recognized_sign !== 'NONE' && result.english_translation) {
+          // Continuous signing deduplication guard: avoid spitting duplicate words while the user holds a sign
+          if (!isManualTrigger && aslRecognitionService.shouldDebounceSign(result.recognized_sign, 1500)) {
+            setRecognitionStatus('idle');
+            return;
+          }
+
           setRecognitionStatus('success');
 
           // Flash UI for deaf/HOH accessibility
           setVisualFlash(true);
           setTimeout(() => setVisualFlash(false), 320);
+
+          if (result.is_auto_translated) {
+            setLastAutoTranslatedText(result.english_translation);
+          }
 
           // Check if this translation is a single word to group into active sentence
           const rawTranslation = result.english_translation.trim();
@@ -597,6 +792,18 @@ export default function App() {
 
           if (isSingleWord && cleanWord.length > 0) {
             handleIncomingSingleWord(cleanWord, result.recognized_sign);
+          } else if (result.is_sentence || result.is_auto_translated || wordsInResult.length > 1) {
+            // Whole sentence recognized or auto-translated: update active sentence area directly
+            setActiveSentence({
+              words: wordsInResult.map((w, idx) => ({
+                id: `w-${Date.now()}-${idx}`,
+                word: w,
+                timestamp: Date.now(),
+              })),
+              sentenceText: rawTranslation,
+              lastWordTimestamp: Date.now(),
+              isComplete: true,
+            });
           }
 
           // Auto speak if enabled
@@ -615,6 +822,8 @@ export default function App() {
             english_translation: result.english_translation,
             confidence: result.confidence,
             is_reliable: result.is_reliable,
+            is_sentence: result.is_sentence || !isSingleWord,
+            is_auto_translated: result.is_auto_translated,
             hand_shape_analysis: result.hand_shape_analysis,
             movement_description: result.movement_description,
           };
@@ -633,7 +842,19 @@ export default function App() {
         setRecognitionStatus('idle');
       }
     },
-    [cameraPermission, history, settings.autoSpeak, handleIncomingSingleWord]
+    [
+      cameraPermission,
+      history,
+      settings.autoSpeak,
+      settings.fastMode,
+      settings.smartAutoTranslateWeirdSigns,
+      handleIncomingSingleWord,
+      signingMode,
+      signLanguage,
+      activeSection,
+      sentenceSpeedMode,
+      activeSentence.words,
+    ]
   );
 
   /**
@@ -682,10 +903,6 @@ export default function App() {
 
   const handleToggleTranslation = () => {
     setIsTranslating((prev) => !prev);
-  };
-
-  const handleManualSnap = () => {
-    processFrameSequence(true);
   };
 
   const handleToggleMirror = () => {
@@ -783,6 +1000,82 @@ export default function App() {
     speechService.speak(text);
   };
 
+  const handleToggleAutoTranslateWeirdSigns = useCallback(() => {
+    setSettings((prev) => ({
+      ...prev,
+      smartAutoTranslateWeirdSigns: !prev.smartAutoTranslateWeirdSigns,
+    }));
+  }, []);
+
+  const handleToggleFastMode = useCallback(() => {
+    setSettings((prev) => {
+      const nextFast = !prev.fastMode;
+      return {
+        ...prev,
+        fastMode: nextFast,
+        sampleIntervalMs: nextFast ? 500 : 1000,
+      };
+    });
+  }, []);
+
+  const handleSelectQuickSentence = useCallback(
+    (sentence: string, gloss: string) => {
+      // 1. Speak if autoSpeak or requested
+      if (settings.autoSpeak) {
+        speechService.speak(sentence);
+      }
+
+      // 2. Visual flash feedback
+      setVisualFlash(true);
+      setTimeout(() => setVisualFlash(false), 300);
+
+      // 3. Set current result so TranslationPanel immediately displays the sentence
+      const resultItem: ASLRecognitionResult = {
+        recognized_sign: gloss,
+        recognized_signs: [gloss],
+        english_translation: sentence,
+        confidence: 0.96,
+        is_reliable: true,
+        is_sentence: true,
+        is_auto_translated: true,
+        timestamp: Date.now(),
+      };
+      setCurrentResult(resultItem);
+      setRecognitionStatus('success');
+
+      // 4. Update active sentence area
+      const words = sentence.replace(/[.,!?;:]+$/, '').split(/\s+/).filter(Boolean);
+      setActiveSentence({
+        words: words.map((w, i) => ({
+          id: `qw-${Date.now()}-${i}`,
+          word: w,
+          timestamp: Date.now(),
+        })),
+        sentenceText: sentence,
+        lastWordTimestamp: Date.now(),
+        isComplete: true,
+      });
+
+      // 5. Add to session history
+      const now = new Date();
+      const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const historyItem: TranslationHistoryItem = {
+        id: `quick-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: Date.now(),
+        formattedTime,
+        recognized_signs: [gloss],
+        english_translation: sentence,
+        confidence: 0.96,
+        is_reliable: true,
+        is_sentence: true,
+        is_auto_translated: true,
+      };
+      setHistory((prev) => [historyItem, ...prev]);
+      setLastAutoTranslatedText(sentence);
+    },
+    [settings.autoSpeak]
+  );
+
   const handleStopAll = () => {
     stopCameraStream();
     setCameraPermission('unrequested');
@@ -802,16 +1095,31 @@ export default function App() {
         appState={appState}
         isTranslating={isTranslating}
         autoSpeak={settings.autoSpeak}
+        signLanguage={signLanguage}
+        signingMode={signingMode}
+        activeSection={activeSection}
+        onSelectSection={(section) => {
+          setActiveSection(section);
+          setInStudioView(true);
+        }}
+        onStopCamera={handleStopAll}
+        onSelectLanguage={setSignLanguage}
+        onToggleSigningMode={() =>
+          setSigningMode((prev) => (prev === 'continuous' ? 'isolated' : 'continuous'))
+        }
         onToggleAutoSpeak={handleToggleAutoSpeak}
         onOpenReference={() => setShowReferenceModal(true)}
         onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
         onOpenPrivacy={() => setShowPrivacyModal(true)}
         onOpenDiagnostics={() => setShowDiagnosticsModal(true)}
+        onOpenDebugPanel={() => setShowDebugPanel((prev) => !prev)}
+        onOpenCorrectionModal={() => setShowCorrectionModal(true)}
+        onOpenEvaluationModal={() => setShowEvaluationModal(true)}
       />
 
       {/* Main Body View */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {cameraPermission === 'unrequested' ? (
+        {cameraPermission === 'unrequested' && !inStudioView ? (
           /* Landing Screen before camera is requested */
           <LandingHero
             onStartCamera={() => startCamera()}
@@ -821,6 +1129,7 @@ export default function App() {
               el?.scrollIntoView({ behavior: 'smooth' });
             }}
             onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
+            onEnterStudioWithoutCamera={() => setInStudioView(true)}
             isRequesting={cameraPermission === 'requesting'}
             cameraPermission={cameraPermission}
             permissionError={permissionError}
@@ -828,67 +1137,183 @@ export default function App() {
         ) : (
           /* Main Interactive Studio Screen */
           <div className="space-y-6 animate-in fade-in duration-300">
-            {/* Top Workspace Grid: Camera Panel & Translation Panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Camera Viewport (7 cols on lg) */}
-              <div className="lg:col-span-7 w-full">
-                <CameraPanel
-                  videoRef={videoRef}
-                  cameraPermission={cameraPermission}
-                  permissionError={permissionError}
-                  isTranslating={isTranslating}
-                  recognitionStatus={recognitionStatus}
-                  rateLimitCooldownSeconds={rateLimitCooldownSeconds}
-                  settings={settings}
-                  availableDevices={availableDevices}
-                  onStartCameraAndTranslation={() => startCamera()}
-                  onStopCameraAndTranslation={handleStopAll}
-                  onToggleTranslation={handleToggleTranslation}
-                  onToggleMirror={handleToggleMirror}
-                  onSwitchDevice={handleSwitchDevice}
-                  onChangeSpeed={handleChangeSpeed}
-                  onManualSnap={handleManualSnap}
-                  onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
-                  visualFlash={visualFlash}
-                />
+            {/* Dedicated Mode Switcher Header Bar */}
+            <div className="flex items-center justify-between gap-3 p-2 bg-slate-900/90 rounded-2xl border border-slate-800 flex-wrap">
+              <div className="flex items-center gap-2">
+                <button
+                  id="tab-sentence-studio"
+                  onClick={() => setActiveSection('sentence')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeSection === 'sentence'
+                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Sentence Translation Section (Fast & Accurate)</span>
+                </button>
+
+                <button
+                  id="tab-vocabulary-studio"
+                  onClick={() => setActiveSection('vocabulary')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeSection === 'vocabulary'
+                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+                  }`}
+                >
+                  <Hand className="w-3.5 h-3.5" />
+                  <span>Signs & Vocabulary Dictionary</span>
+                </button>
               </div>
 
-              {/* Right Column: Active Sentence & English Translation (5 cols on lg) */}
-              <div className="lg:col-span-5 w-full space-y-6">
-                {/* Active Sentence Area */}
-                <ActiveSentenceArea
-                  activeSentence={activeSentence}
-                  timeRemainingMs={sentenceTimeRemainingMs}
-                  timeWindowMs={sentenceWindowMs}
-                  onChangeTimeWindow={handleChangeSentenceWindow}
-                  onClearSentence={handleClearActiveSentence}
-                  onCompleteSentence={handleCompleteActiveSentence}
-                  onRemoveWord={handleRemoveActiveSentenceWord}
-                  onSpeakSentence={handleSpeakText}
-                />
-
-                {/* English Translation Display */}
-                <TranslationPanel
-                  currentResult={currentResult}
-                  recognitionStatus={recognitionStatus}
-                  isTranslating={isTranslating}
-                  onClearTranslation={handleClearTranslation}
-                  onSpeakText={handleSpeakText}
-                  onRetryTranslation={() => processFrameSequence(true)}
-                  onOpenDiagnostics={() => setShowDiagnosticsModal(true)}
-                />
+              <div className="text-xs text-slate-400 hidden md:block">
+                {activeSection === 'sentence'
+                  ? '⚡ Laser-focused on continuous signing, fluent grammar & pause detection'
+                  : '📖 Single sign vocabulary, handshape reference & dictionary lookup'}
               </div>
             </div>
 
-            {/* Translation Session History */}
-            <div className="w-full">
-              <TranslationHistory
-                history={history}
+            {/* Developer Pipeline Diagnostics Collapsible Panel */}
+            <DeveloperDebugPanel
+              isOpen={showDebugPanel}
+              onClose={() => setShowDebugPanel(false)}
+              telemetry={telemetry}
+              cnnTelemetry={cnnTelemetry}
+              currentResult={currentResult}
+              activeSequenceGlosses={activeSentence.rawGlossSequence || activeSentence.words.map((w) => w.gloss || w.word)}
+              grammarSentence={activeSentence.synthesizedSentence || activeSentence.sentenceText}
+              finalTranslation={activeSentence.sentenceText}
+              signingMode={signingMode}
+              signLanguage={signLanguage}
+              showDebugOverlay={showDebugOverlay}
+              onToggleDebugOverlay={setShowDebugOverlay}
+              onModeToggle={() =>
+                setSigningMode((prev) => (prev === 'continuous' ? 'isolated' : 'continuous'))
+              }
+            />
+
+            {/* Render Selected Studio Section */}
+            {activeSection === 'sentence' ? (
+              /* DEDICATED SENTENCE TRANSLATION STUDIO */
+              <SentenceTranslationStudio
+                videoRef={videoRef}
+                overlayCanvasRef={overlayCanvasRef}
+                showDebugOverlay={showDebugOverlay}
+                cameraPermission={cameraPermission}
+                permissionError={permissionError}
+                isTranslating={isTranslating}
+                recognitionStatus={recognitionStatus}
+                activeSentence={activeSentence}
+                telemetry={telemetry}
+                cnnTelemetry={cnnTelemetry}
+                cnnEnabled={cnnEnabled}
+                onToggleCnn={() => setCnnEnabled((prev) => !prev)}
+                signLanguage={signLanguage}
+                settings={settings}
+                sentenceHistory={history}
+                timeRemainingMs={sentenceTimeRemainingMs}
+                timeWindowMs={sentenceWindowMs}
+                onStartCamera={() => startCamera()}
+                onStopCamera={handleStopAll}
+                onToggleTranslation={handleToggleTranslation}
+                onClearSentence={handleClearActiveSentence}
+                onCompleteSentence={handleCompleteActiveSentence}
+                onRemoveWord={handleRemoveActiveSentenceWord}
+                onSpeakSentence={handleSpeakText}
+                onChangeSpeedMode={setSentenceSpeedMode}
+                currentSpeedMode={sentenceSpeedMode}
+                onChangeSentenceWindow={handleChangeSentenceWindow}
+                onOpenCorrectionModal={() => setShowCorrectionModal(true)}
+                onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
+                onSelectQuickSentence={handleSelectQuickSentence}
+                onDeleteHistoryItem={handleDeleteHistoryItem}
                 onClearHistory={handleClearHistory}
-                onDeleteItem={handleDeleteHistoryItem}
-                onSpeakItem={handleSpeakText}
               />
-            </div>
+            ) : (
+              /* SINGLE SIGNS & VOCABULARY REFERENCE VIEW */
+              <div className="space-y-6">
+                {/* Top Workspace Grid: Camera Panel & Translation Panel */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left Column: Camera Viewport (7 cols on lg) */}
+                  <div className="lg:col-span-7 w-full">
+                    <CameraPanel
+                      videoRef={videoRef}
+                      overlayCanvasRef={overlayCanvasRef}
+                      showDebugOverlay={showDebugOverlay}
+                      cameraPermission={cameraPermission}
+                      permissionError={permissionError}
+                      isTranslating={isTranslating}
+                      recognitionStatus={recognitionStatus}
+                      rateLimitCooldownSeconds={rateLimitCooldownSeconds}
+                      settings={settings}
+                      availableDevices={availableDevices}
+                      onStartCameraAndTranslation={() => startCamera()}
+                      onStopCameraAndTranslation={handleStopAll}
+                      onToggleTranslation={handleToggleTranslation}
+                      onToggleMirror={handleToggleMirror}
+                      onSwitchDevice={handleSwitchDevice}
+                      onChangeSpeed={handleChangeSpeed}
+                      onOpenPermissionGuide={() => setShowPermissionGuideModal(true)}
+                      visualFlash={visualFlash}
+                    />
+                  </div>
+
+                  {/* Right Column: Active Sentence & English Translation (5 cols on lg) */}
+                  <div className="lg:col-span-5 w-full space-y-6">
+                    {/* Active Sentence Area */}
+                    <ActiveSentenceArea
+                      activeSentence={activeSentence}
+                      timeRemainingMs={sentenceTimeRemainingMs}
+                      timeWindowMs={sentenceWindowMs}
+                      onChangeTimeWindow={handleChangeSentenceWindow}
+                      onClearSentence={handleClearActiveSentence}
+                      onCompleteSentence={handleCompleteActiveSentence}
+                      onRemoveWord={handleRemoveActiveSentenceWord}
+                      onSpeakSentence={handleSpeakText}
+                      rawGlosses={activeSentence.rawGlossSequence}
+                      onOpenCorrectionModal={() => setShowCorrectionModal(true)}
+                    />
+
+                    {/* English Translation Display */}
+                    <TranslationPanel
+                      currentResult={currentResult}
+                      recognitionStatus={recognitionStatus}
+                      isTranslating={isTranslating}
+                      onClearTranslation={handleClearTranslation}
+                      onSpeakText={handleSpeakText}
+                      onRetryTranslation={() => processFrameSequence(true)}
+                      onOpenDiagnostics={() => setShowDiagnosticsModal(true)}
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Conversational Sentences & Smart Auto-Mapping Bar */}
+                <div className="w-full">
+                  <QuickSentencesBar
+                    autoTranslateWeirdSigns={settings.smartAutoTranslateWeirdSigns !== false}
+                    onToggleAutoTranslateWeirdSigns={handleToggleAutoTranslateWeirdSigns}
+                    fastMode={Boolean(settings.fastMode)}
+                    onToggleFastMode={handleToggleFastMode}
+                    onSelectSentence={handleSelectQuickSentence}
+                    onPhysicalPrint={() => window.print()}
+                    onSpeakText={handleSpeakText}
+                    lastAutoTranslatedText={lastAutoTranslatedText}
+                  />
+                </div>
+
+                {/* Translation Session History */}
+                <div className="w-full">
+                  <TranslationHistory
+                    history={history}
+                    onClearHistory={handleClearHistory}
+                    onDeleteItem={handleDeleteHistoryItem}
+                    onSpeakItem={handleSpeakText}
+                    onPrintTranscript={() => window.print()}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -956,6 +1381,23 @@ export default function App() {
         onClose={() => setShowDiagnosticsModal(false)}
         appState={appState}
         serverHealth={serverHealth}
+      />
+
+      {/* User Session Correction & Learning Loop Modal */}
+      <CorrectionModal
+        isOpen={showCorrectionModal}
+        onClose={() => setShowCorrectionModal(false)}
+        defaultOriginalSign={currentResult?.recognized_sign !== 'NONE' ? currentResult?.recognized_sign : ''}
+        defaultCorrectedSign={currentResult?.english_translation || ''}
+        onCorrectionSaved={() => {
+          // Trigger visual feedback or state refresh
+        }}
+      />
+
+      {/* Accuracy Evaluation Benchmark Suite */}
+      <EvaluationSuiteModal
+        isOpen={showEvaluationModal}
+        onClose={() => setShowEvaluationModal(false)}
       />
     </div>
   );

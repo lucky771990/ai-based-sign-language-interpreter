@@ -13,7 +13,8 @@ import {
   AlertTriangle,
   RefreshCw,
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  LayoutDashboard
 } from 'lucide-react';
 import { ASL_REFERENCE_SIGNS } from '../data/aslReferenceData';
 import { CameraPermissionState } from '../types';
@@ -23,6 +24,7 @@ interface LandingHeroProps {
   onOpenReference: () => void;
   onOpenHowItWorks: () => void;
   onOpenPermissionGuide?: () => void;
+  onEnterStudioWithoutCamera?: () => void;
   isRequesting: boolean;
   cameraPermission?: CameraPermissionState;
   permissionError?: string | null;
@@ -33,6 +35,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   onOpenReference,
   onOpenHowItWorks,
   onOpenPermissionGuide,
+  onEnterStudioWithoutCamera,
   isRequesting,
   cameraPermission,
   permissionError,
@@ -151,12 +154,12 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
         )}
 
         {/* Primary CTA Buttons */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 flex-wrap">
           <button
             id="landing-start-camera-button"
             onClick={onStartCamera}
             disabled={isRequesting}
-            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-base shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40 transform active:scale-98 transition-all flex items-center justify-center gap-3 cursor-pointer group disabled:opacity-75"
+            className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm sm:text-base shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40 transform active:scale-98 transition-all flex items-center justify-center gap-2.5 cursor-pointer group disabled:opacity-75"
           >
             {isRequesting ? (
               <>
@@ -172,10 +175,24 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             )}
           </button>
 
+          {/* Enter Studio / Interactive Mode without Camera */}
+          {onEnterStudioWithoutCamera && (
+            <button
+              id="landing-enter-studio-button"
+              type="button"
+              onClick={onEnterStudioWithoutCamera}
+              className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-900/90 hover:bg-slate-850 border border-slate-750 text-slate-200 font-semibold text-sm sm:text-base transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              title="Open Interactive Translation Studio without Camera"
+            >
+              <LayoutDashboard className="w-4 h-4 text-indigo-400" />
+              <span>Interactive Studio</span>
+            </button>
+          )}
+
           <button
             id="landing-how-it-works-button"
             onClick={onOpenHowItWorks}
-            className="w-full sm:w-auto px-6 py-4 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-200 font-semibold text-base transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 font-semibold text-sm sm:text-base transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             <Info className="w-4 h-4 text-purple-400" />
             <span>How It Works</span>

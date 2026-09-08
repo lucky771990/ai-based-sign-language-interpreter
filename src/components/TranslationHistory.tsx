@@ -10,7 +10,8 @@ import {
   Download,
   Share2,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  Printer
 } from 'lucide-react';
 
 interface TranslationHistoryProps {
@@ -18,6 +19,7 @@ interface TranslationHistoryProps {
   onClearHistory: () => void;
   onDeleteItem: (id: string) => void;
   onSpeakItem: (text: string) => void;
+  onPrintTranscript?: () => void;
 }
 
 export const TranslationHistory: React.FC<TranslationHistoryProps> = ({
@@ -25,6 +27,7 @@ export const TranslationHistory: React.FC<TranslationHistoryProps> = ({
   onClearHistory,
   onDeleteItem,
   onSpeakItem,
+  onPrintTranscript,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [transcriptCopied, setTranscriptCopied] = useState(false);
@@ -115,10 +118,19 @@ export const TranslationHistory: React.FC<TranslationHistoryProps> = ({
             <button
               id="export-transcript-button"
               onClick={handleExportTextFile}
-              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/80 text-slate-300 hover:text-white transition-colors"
+              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/80 text-slate-300 hover:text-white transition-colors cursor-pointer"
               title="Download Transcript as TXT"
             >
               <Download className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              id="print-history-button"
+              onClick={onPrintTranscript || (() => window.print())}
+              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700/80 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              title="Print Session Transcripts to Paper/PDF"
+            >
+              <Printer className="w-3.5 h-3.5" />
             </button>
 
             <button
@@ -151,12 +163,17 @@ export const TranslationHistory: React.FC<TranslationHistoryProps> = ({
                       {item.formattedTime}
                     </span>
 
-                    {item.is_sentence && (
+                    {item.is_auto_translated ? (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30 flex items-center gap-1">
                         <Sparkles className="w-3 h-3 text-purple-400" />
+                        <span>Auto-Mapped</span>
+                      </span>
+                    ) : item.is_sentence ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-indigo-400" />
                         <span>Assembled Sentence</span>
                       </span>
-                    )}
+                    ) : null}
 
                     {item.recognized_signs && item.recognized_signs.length > 0 && (
                       <span className="text-[11px] font-bold text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">

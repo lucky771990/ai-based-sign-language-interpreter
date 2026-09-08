@@ -11,7 +11,8 @@ import {
   Sparkles,
   X,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Edit3,
 } from 'lucide-react';
 
 interface ActiveSentenceAreaProps {
@@ -23,6 +24,7 @@ interface ActiveSentenceAreaProps {
   onCompleteSentence: () => void;
   onRemoveWord: (id: string) => void;
   onSpeakSentence: (text: string) => void;
+  onOpenCorrectionModal?: () => void;
 }
 
 export const ActiveSentenceArea: React.FC<ActiveSentenceAreaProps> = ({
@@ -34,6 +36,7 @@ export const ActiveSentenceArea: React.FC<ActiveSentenceAreaProps> = ({
   onCompleteSentence,
   onRemoveWord,
   onSpeakSentence,
+  onOpenCorrectionModal,
 }) => {
   const [copied, setCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -42,6 +45,7 @@ export const ActiveSentenceArea: React.FC<ActiveSentenceAreaProps> = ({
   const hasWords = words.length > 0;
   const isComplete = activeSentence.isComplete;
   const sentenceText = activeSentence.sentenceText;
+  const rawGlosses = activeSentence.rawGlossSequence || words.map((w) => w.gloss || w.word.toUpperCase());
 
   // Calculate remaining progress percentage (0 - 100)
   const progressPercent = hasWords && !isComplete && timeWindowMs > 0
@@ -178,9 +182,16 @@ export const ActiveSentenceArea: React.FC<ActiveSentenceAreaProps> = ({
           <div className="space-y-4">
             {/* The Assembled Sentence Display */}
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold text-indigo-400 mb-1.5 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Assembled Sentence</span>
+              <div className="text-xs uppercase tracking-wider font-semibold text-indigo-400 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Grammar Synthesized Sentence</span>
+                </span>
+                {rawGlosses && rawGlosses.length > 0 && (
+                  <span className="text-[10px] font-mono text-slate-400 font-normal">
+                    Raw Glosses: <strong className="text-indigo-300">{rawGlosses.join(' ')}</strong>
+                  </span>
+                )}
               </div>
               <div
                 id="active-sentence-display-text"
@@ -291,6 +302,19 @@ export const ActiveSentenceArea: React.FC<ActiveSentenceAreaProps> = ({
                 <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Speak</span>
               </button>
+
+              {/* Edit / Correct Button */}
+              {onOpenCorrectionModal && (
+                <button
+                  id="correct-active-sentence-button"
+                  onClick={onOpenCorrectionModal}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Teach or correct a sign in this sentence"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Correct Sign</span>
+                </button>
+              )}
 
               {/* Complete Manually Button */}
               {!isComplete && (

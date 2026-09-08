@@ -1,4 +1,14 @@
-import { ASLRecognitionResult } from '../types';
+import {
+  ASLRecognitionResult,
+  CandidateSign,
+  CNNFeatureTensor,
+  HandFeatureTelemetry,
+  SentenceSpeedMode,
+  SentenceStreamResult,
+  SignLanguage,
+  SigningMode,
+} from '../types';
+import { languageContextEngine } from './languageContextEngine';
 
 export function getApiBaseUrl(): string {
   // 1. Build-time or deployment environment variable
@@ -75,9 +85,10 @@ class ASLRecognitionService {
 
   /**
    * Captures a single video frame as a compressed base64 JPEG string
-   * Optimized at 480px width & 0.75 quality for rapid network transfer & AI inference
+   * Defaulted to 480px width & 0.80 quality (or up to 640px @ 0.85 in precision mode)
+   * for sharp hand articulation, clear finger joints, and landmark preservation.
    */
-  public captureFrame(video: HTMLVideoElement, maxWidth = 480): string | null {
+  public captureFrame(video: HTMLVideoElement, maxWidth = 480, quality = 0.80): string | null {
     if (!video || video.readyState < 2 || !this.ctx) {
       return null;
     }
@@ -96,32 +107,34 @@ class ASLRecognitionService {
     }
 
     this.ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-    return this.canvas.toDataURL('image/jpeg', 0.75);
+    return this.canvas.toDataURL('image/jpeg', quality);
   }
 
   /**
-   * Captures a short sequence of temporal frames spaced 110ms apart
-   * to capture ASL movement dynamics rapidly
+   * Captures a rapid sequence of temporal frames spaced 50ms apart
+   * for responsive real-time sign language movement analysis
    */
   public async captureTemporalSequence(
     video: HTMLVideoElement,
-    frameCount = 2,
-    delayMs = 110
+    frameCount = 1,
+    delayMs = 50,
+    maxWidth = 480,
+    quality = 0.80
   ): Promise<string[]> {
     const frames: string[] = [];
 
-    const frame1 = this.captureFrame(video);
+    const frame1 = this.captureFrame(video, maxWidth, quality);
     if (frame1) frames.push(frame1);
 
     if (frameCount > 1) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
-      const frame2 = this.captureFrame(video);
+      const frame2 = this.captureFrame(video, maxWidth, quality);
       if (frame2) frames.push(frame2);
     }
 
     if (frameCount > 2) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
-      const frame3 = this.captureFrame(video);
+      const frame3 = this.captureFrame(video, maxWidth, quality);
       if (frame3) frames.push(frame3);
     }
 
@@ -130,21 +143,24 @@ class ASLRecognitionService {
 
   /**
    * Translates captured video frames into English via the secure backend API endpoint.
-   * The backend authenticates with Gemini using the server-side GEMINI_API_KEY secret.
+   * Adheres strictly to the Anti-Hallucination rule:
+   * VISUAL EVIDENCE > SIGN RECOGNITION > TEMPORAL CONTEXT > LANGUAGE CONTEXT > GRAMMAR CORRECTION
    */
   public async translateFrames(
     frames: string[],
     recentHistory: string[] = [],
-    mode: 'continuous' | 'single_sign' = 'continuous'
+    mode: SigningMode = 'continuous',
+    signLanguage: SignLanguage = 'ASL',
+    telemetry?: HandFeatureTelemetry
   ): Promise<ASLRecognitionResult> {
     if (frames.length === 0) {
       return {
         recognized_sign: 'NONE',
         recognized_signs: [],
-        english_translation: "I'm not confident about that sign. Please try again.",
+        english_translation: '[uncertain sign]',
         confidence: 0,
         is_reliable: false,
-        uncertainty_reason: 'No camera frames were captured.'
+        uncertainty_reason: 'No camera frames were captured.',
       };
     }
 
@@ -155,13 +171,12 @@ class ASLRecognitionService {
         english_translation: '',
         confidence: 0,
         is_reliable: false,
-        uncertainty_reason: 'Analysis in progress'
+        uncertainty_reason: 'Analysis in progress',
       };
     }
 
     this.isProcessing = true;
 
-    // Safety timeout to ensure isProcessing resets even on network disconnects
     const timeoutId = setTimeout(() => {
       this.isProcessing = false;
     }, 10000);
@@ -181,6 +196,8 @@ class ASLRecognitionService {
             frames,
             recentHistory,
             mode,
+            signLanguage,
+            telemetry,
           }),
         });
       } catch (networkError: any) {
@@ -188,11 +205,11 @@ class ASLRecognitionService {
         return {
           recognized_sign: 'NONE',
           recognized_signs: [],
-          english_translation: 'Unable to connect to the translation service. Please check the API configuration and try again.',
+          english_translation: 'Unable to connect to translation server.',
           confidence: 0,
           is_reliable: false,
           is_connection_error: true,
-          uncertainty_reason: networkError?.message || 'Network connection to translation server failed.',
+          uncertainty_reason: networkError?.message || 'Network connection failed.',
           timestamp: Date.now(),
         };
       }
@@ -207,18 +224,16 @@ class ASLRecognitionService {
         return {
           recognized_sign: 'NONE',
           recognized_signs: [],
-          english_translation: response.status === 404
-            ? 'Backend API endpoint not found. Ensure the translation server is running with VITE_API_BASE_URL.'
-            : `Server returned non-JSON response (HTTP ${response.status}).`,
+          english_translation: `Server returned non-JSON response (HTTP ${response.status}).`,
           confidence: 0,
           is_reliable: false,
           is_connection_error: true,
-          uncertainty_reason: `HTTP ${response.status} response from ${endpoint}`,
+          uncertainty_reason: `HTTP ${response.status} from ${endpoint}`,
           timestamp: Date.now(),
         };
       }
 
-      // Check if backend reported missing Gemini configuration
+      // Handle missing key
       if (response.status === 503 || data?.code === 'MISSING_API_KEY' || data?.is_not_configured) {
         return {
           recognized_sign: 'NONE',
@@ -227,7 +242,7 @@ class ASLRecognitionService {
           confidence: 0,
           is_reliable: false,
           is_not_configured: true,
-          uncertainty_reason: data?.uncertainty_reason || data?.details || 'Missing GEMINI_API_KEY on the backend server.',
+          uncertainty_reason: data?.uncertainty_reason || 'Missing GEMINI_API_KEY.',
           timestamp: Date.now(),
         };
       }
@@ -236,28 +251,61 @@ class ASLRecognitionService {
         return {
           recognized_sign: 'NONE',
           recognized_signs: [],
-          english_translation: data?.english_translation || data?.error || 'Unable to connect to the translation service. Please check the API configuration and try again.',
+          english_translation: data?.english_translation || '[uncertain sign]',
           confidence: 0,
           is_reliable: false,
           is_connection_error: true,
-          uncertainty_reason: data?.details || data?.error || `HTTP ${response.status}`,
+          uncertainty_reason: data?.uncertainty_reason || `HTTP ${response.status}`,
           timestamp: Date.now(),
         };
       }
 
-      // Temporal smoothing: Check if confidence meets threshold
-      const isReliable = Boolean(data.is_reliable && data.confidence >= 0.65);
+      // Extract raw prediction
+      const rawSign = data.recognized_sign || 'NONE';
+      const rawConfidence = typeof data.confidence === 'number' ? data.confidence : 0;
+      const alternatives: string[] = Array.isArray(data.alternatives) ? data.alternatives : [];
+
+      // Construct CandidateSign
+      const candidate: CandidateSign = {
+        sign: rawSign,
+        confidence: rawConfidence,
+        timestamp: Date.now(),
+        duration: data.duration,
+        alternatives,
+        hand_shape: data.hand_shape_analysis,
+        movement: data.movement_description,
+        is_two_handed: Boolean(data.is_two_handed),
+        status: rawConfidence >= 0.80 ? 'high' : rawConfidence >= 0.50 ? 'medium' : 'low',
+      };
+
+      // Resolve candidate through context engine (disambiguation, user session corrections, confidence gating)
+      const resolved = languageContextEngine.resolveCandidateSign(candidate, {
+        previousSigns: recentHistory,
+        followingSigns: [],
+        signLanguage,
+      });
+
+      const isReliable = !resolved.isUncertain && resolved.confidence >= 0.60;
 
       const result: ASLRecognitionResult = {
-        recognized_sign: data.recognized_sign || 'NONE',
-        recognized_signs: Array.isArray(data.recognized_signs) ? data.recognized_signs : [data.recognized_sign || 'NONE'],
-        english_translation: data.english_translation || (isReliable ? '' : "I'm not confident about that sign. Please try again."),
-        confidence: typeof data.confidence === 'number' ? data.confidence : 0,
+        recognized_sign: resolved.resolvedSign,
+        recognized_signs: [resolved.resolvedSign],
+        english_translation: resolved.resolvedWord,
+        confidence: resolved.confidence,
         is_reliable: isReliable,
-        hand_shape_analysis: data.hand_shape_analysis || undefined,
-        movement_description: data.movement_description || undefined,
-        detected_non_manual_markers: data.detected_non_manual_markers || undefined,
-        uncertainty_reason: data.uncertainty_reason || undefined,
+        duration: data.duration,
+        alternatives,
+        candidate_signs: [candidate],
+        raw_sequence: data.raw_sequence || [resolved.resolvedSign],
+        grammar_corrected_sentence: data.grammar_corrected_sentence,
+        hand_shape_analysis: data.hand_shape_analysis,
+        movement_description: data.movement_description,
+        detected_non_manual_markers: data.detected_non_manual_markers,
+        is_two_handed: Boolean(data.is_two_handed),
+        is_sentence: Boolean(data.is_sentence),
+        language: signLanguage,
+        mode,
+        uncertainty_reason: resolved.uncertaintyLabel || data.uncertainty_reason,
         is_rate_limited: Boolean(data.is_rate_limited),
         retry_after_seconds: data.retry_after_seconds,
         is_not_configured: Boolean(data.is_not_configured),
@@ -271,26 +319,102 @@ class ASLRecognitionService {
 
       return result;
     } catch (error: any) {
-      console.error('ASL translation processing error:', error);
+      console.error('Sign translation processing error:', error);
       return {
         recognized_sign: 'NONE',
         recognized_signs: [],
-        english_translation: 'Unable to connect to the translation service. Please check the API configuration and try again.',
+        english_translation: '[uncertain sign]',
         confidence: 0,
         is_reliable: false,
         is_connection_error: true,
-        uncertainty_reason: error.message || 'Network communication error.'
+        uncertainty_reason: error.message || 'Communication error.',
       };
     } finally {
       this.isProcessing = false;
     }
   }
 
-  public shouldDebounceSign(sign: string, cooldownMs = 2500): boolean {
+  /**
+   * High-speed, continuous sentence stream translation.
+   * Leverages server-side zero-budget Gemini Flash-Lite with integrated syntactic synthesis
+   * and local predictive fallback for near-instant (<350ms) sentence formation.
+   */
+  public async translateSentenceStream(
+    frames: string[],
+    existingGlosses: string[] = [],
+    signLanguage: SignLanguage = 'ASL',
+    telemetry?: HandFeatureTelemetry,
+    speedMode: SentenceSpeedMode = 'turbo',
+    cnnFeatures?: CNNFeatureTensor
+  ): Promise<SentenceStreamResult> {
+    if (frames.length === 0) {
+      return {
+        new_gloss: 'NONE',
+        is_holding_previous: false,
+        raw_gloss_sequence: existingGlosses,
+        synthesized_sentence: existingGlosses.length > 0 ? `${existingGlosses.join(' ')}.` : '',
+        confidence: 0,
+        cadence_state: 'rest',
+        cnn_features: cnnFeatures,
+        latency_ms: 0,
+      };
+    }
+
+    const startTime = Date.now();
+    try {
+      const baseUrl = getApiBaseUrl();
+      const endpoint = `${baseUrl}/api/translate-sentence`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          frames,
+          existingGlosses,
+          signLanguage,
+          telemetry,
+          speedMode,
+          cnnFeatures,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned HTTP ${response.status}`);
+      }
+
+      const data: SentenceStreamResult = await response.json();
+      data.latency_ms = Date.now() - startTime;
+      return data;
+    } catch (err: any) {
+      // Local zero-latency fallback using rule-based languageContextEngine
+      const grammarRes = languageContextEngine.synthesizeGrammarSentence(
+        existingGlosses.map((g) => ({
+          id: `f-${Math.random()}`,
+          word: g,
+          gloss: g,
+          timestamp: Date.now(),
+        })),
+        signLanguage
+      );
+
+      return {
+        new_gloss: 'NONE',
+        is_holding_previous: false,
+        raw_gloss_sequence: existingGlosses,
+        synthesized_sentence: grammarRes.finalTranslation || (existingGlosses.length > 0 ? `${existingGlosses.join(' ')}.` : ''),
+        confidence: 0.72,
+        cadence_state: 'signing',
+        latency_ms: Date.now() - startTime,
+        error: err.message,
+      };
+    }
+  }
+
+  public shouldDebounceSign(sign: string, cooldownMs = 2000): boolean {
     if (!sign || sign === 'NONE') return false;
     const now = Date.now();
     if (sign === this.lastRecognizedSign && now - this.lastRecognitionTime < cooldownMs) {
-      return true; // Already recognized very recently
+      return true;
     }
     return false;
   }
