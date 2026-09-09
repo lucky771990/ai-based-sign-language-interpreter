@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ASLRecognitionResult, RecognitionStatus } from '../types';
+import { ASLRecognitionResult, RecognitionStatus, ActiveSentence } from '../types';
 import {
   Copy,
   Check,
@@ -19,6 +19,7 @@ interface TranslationPanelProps {
   currentResult: ASLRecognitionResult | null;
   recognitionStatus: RecognitionStatus;
   isTranslating: boolean;
+  activeSentence?: ActiveSentence;
   onClearTranslation: () => void;
   onSpeakText: (text: string) => void;
   onRetryTranslation?: () => void;
@@ -29,6 +30,7 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
   currentResult,
   recognitionStatus,
   isTranslating,
+  activeSentence,
   onClearTranslation,
   onSpeakText,
   onRetryTranslation,
@@ -224,6 +226,44 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
                           {sign}
                         </span>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Live Full Sentence Translation Ribbon */}
+                  {activeSentence && activeSentence.words.length > 1 && activeSentence.sentenceText && (
+                    <div className="mt-3 p-3.5 rounded-xl bg-gradient-to-r from-indigo-950/80 to-purple-950/80 border border-indigo-500/40 text-white space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-indigo-300 font-bold uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Full Sentence Translation</span>
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200 font-medium">
+                          {activeSentence.words.length} signs combined
+                        </span>
+                      </div>
+                      <div className="text-lg font-bold text-white tracking-tight leading-snug">
+                        "{activeSentence.sentenceText}"
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {activeSentence.words.map((w, idx) => (
+                            <span
+                              key={w.id || idx}
+                              className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-900/90 text-indigo-300 border border-indigo-500/30"
+                            >
+                              {w.gloss || w.word.toUpperCase()}
+                            </span>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => onSpeakText(activeSentence.sentenceText)}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                          title="Speak full sentence"
+                        >
+                          <Volume2 className="w-3.5 h-3.5" />
+                          <span>Speak</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

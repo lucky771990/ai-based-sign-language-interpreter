@@ -42,6 +42,7 @@ import {
   TranslationHistoryItem,
 } from '../types';
 import { cnnSentenceEngine } from '../services/cnnSentenceEngine';
+import { languageContextEngine } from '../services/languageContextEngine';
 
 interface SentenceTranslationStudioProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -82,10 +83,14 @@ const COMMON_CONVERSATIONAL_SENTENCES = [
   { label: 'How are you?', glosses: ['HOW', 'YOU'], text: 'How are you?' },
   { label: 'Nice to meet you', glosses: ['NICE', 'MEET', 'YOU'], text: 'Nice to meet you.' },
   { label: 'What is your name?', glosses: ['NAME', 'YOU', 'WHAT'], text: 'What is your name?' },
-  { label: 'I want coffee', glosses: ['I', 'WANT', 'COFFEE'], text: 'I want coffee.' },
+  { label: 'I will go tomorrow', glosses: ['ME', 'SCHOOL', 'TOMORROW', 'GO'], text: 'I will go to school tomorrow.' },
+  { label: 'Do you want food?', glosses: ['YOU', 'FOOD', 'WANT'], text: 'Do you want food?' },
+  { label: 'I met my friend yesterday', glosses: ['YESTERDAY', 'FRIEND', 'MEET'], text: 'I met my friend yesterday.' },
+  { label: 'I do not like tea', glosses: ['ME', 'NOT', 'LIKE', 'TEA'], text: "I don't like tea." },
   { label: 'Where is the bathroom?', glosses: ['BATHROOM', 'WHERE'], text: 'Where is the bathroom?' },
-  { label: 'I will go tomorrow', glosses: ['TOMORROW', 'MARKET', 'I', 'GO'], text: 'I will go to the market tomorrow.' },
-  { label: 'I need help', glosses: ['I', 'NEED', 'HELP'], text: 'I need help!' },
+  { label: 'I am tired want sleep', glosses: ['I', 'TIRED', 'WANT', 'SLEEP'], text: 'I am tired and want to sleep.' },
+  { label: 'I want coffee', glosses: ['I', 'WANT', 'COFFEE'], text: 'I want coffee.' },
+  { label: 'Please help me', glosses: ['PLEASE', 'HELP', 'ME'], text: 'Please help me!' },
   { label: 'Thank you very much', glosses: ['THANK-YOU', 'VERY', 'MUCH'], text: 'Thank you very much.' },
 ];
 
@@ -127,8 +132,22 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
   const [autoSpeakSentence, setAutoSpeakSentence] = useState(true);
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
   const [showFeatureMaps, setShowFeatureMaps] = useState(true);
+  const [quickInputText, setQuickInputText] = useState('');
   const lastSpokenSentenceRef = useRef<string>('');
   const cnnCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const handleQuickInputSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = quickInputText.trim();
+    if (!trimmed) return;
+    const glosses = trimmed.replace(/[.,!?;:]+$/, '').split(/\s+/).map((s) => s.toUpperCase());
+    const localResult = languageContextEngine.synthesizeGrammarSentence(
+      glosses.map((g, i) => ({ id: `q-${i}`, word: g.toLowerCase(), gloss: g }))
+    );
+    const translatedText = localResult.finalTranslation || trimmed;
+    onSelectQuickSentence(translatedText, glosses);
+    setQuickInputText('');
+  };
 
   // Guarantee that when camera is granted and video has a stream, playback starts without stalling
   useEffect(() => {
@@ -511,17 +530,17 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
             <div className="flex items-center gap-2 text-xs">
               <span className="text-slate-400 font-medium">Auto-Finish Pause:</span>
               <div className="flex items-center bg-slate-950 rounded-lg p-0.5 border border-slate-800">
-                {[1200, 1800, 2500].map((ms) => (
+                {[800, 1200, 1800, 2500].map((ms) => (
                   <button
                     key={ms}
                     onClick={() => onChangeSentenceWindow(ms)}
                     className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer ${
                       timeWindowMs === ms
-                        ? 'bg-indigo-600 text-white'
+                        ? 'bg-indigo-600 text-white shadow-sm'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {(ms / 1000).toFixed(1)}s
+                    {ms === 800 ? '⚡ 0.8s' : `${(ms / 1000).toFixed(1)}s`}
                   </button>
                 ))}
               </div>
@@ -834,22 +853,44 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
             </div>
           </div>
 
-          {/* Quick Conversational Sentence Starters */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+          {/* Quick Conversational Sentence Starters & Instant Input */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                Quick Sentence Starters & Practice
+                Quick Sentence Translator & Practice
               </span>
-              <span className="text-[11px] text-slate-400">Click to practice or verify</span>
+              <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                <Zap className="w-3 h-3" />
+                Instant Grammar Synthesis
+              </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {/* Quick Interactive Input Field */}
+            <form onSubmit={handleQuickInputSubmit} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={quickInputText}
+                onChange={(e) => setQuickInputText(e.target.value)}
+                placeholder="Type or test ASL glosses (e.g. ME SCHOOL TOMORROW GO or YOU WANT WATER)..."
+                className="flex-1 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none transition-all font-mono"
+              />
+              <button
+                type="submit"
+                disabled={!quickInputText.trim()}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-40 disabled:hover:from-indigo-600 text-white text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Translate Quick</span>
+              </button>
+            </form>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
               {COMMON_CONVERSATIONAL_SENTENCES.map((preset, idx) => (
                 <button
                   key={idx}
                   onClick={() => onSelectQuickSentence(preset.text, preset.glosses)}
-                  className="p-2 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-indigo-500/50 text-left transition-all text-xs group cursor-pointer"
+                  className="p-2 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-indigo-500/50 hover:bg-indigo-950/20 text-left transition-all text-xs group cursor-pointer"
                 >
                   <p className="font-semibold text-slate-200 group-hover:text-indigo-300 truncate">
                     {preset.label}

@@ -569,11 +569,13 @@ ${cnnPrompt}
 Speed mode: ${speedMode}.
 Return JSON strictly conforming to schema.`;
 
-    // Prioritize gemini-3.8-flash for superior visual understanding and gesture recognition
-    const modelCandidates = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+    // Prioritize ultra-fast low-latency models in turbo mode (<200ms latency)
+    const modelCandidates = speedMode === 'turbo'
+      ? ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3.8-flash']
+      : ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
 
     const availableCandidates = modelCandidates.filter(isModelAvailable);
-    const modelName = availableCandidates[0] || 'gemini-3.8-flash';
+    const modelName = availableCandidates[0] || (speedMode === 'turbo' ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash');
 
     const response = await ai.models.generateContent({
       model: modelName,
@@ -681,6 +683,61 @@ app.post('/api/grammar-synthesize', async (req, res) => {
         grammar_corrected_sentence: '',
         final_translation: '',
         confidence: 0.9,
+      });
+    }
+
+    // Instant fast-path dictionary for common ASL conversational phrases (<1ms)
+    const normalizedKey = signs.map((s: string) => s.toUpperCase().trim()).join(' ');
+    const FAST_IDIOMS: Record<string, string> = {
+      'NAME YOU WHAT': 'What is your name?',
+      'WHAT YOUR NAME': 'What is your name?',
+      'HOW YOU': 'How are you?',
+      'NICE MEET YOU': 'Nice to meet you.',
+      'GOOD SEE YOU': 'Good to see you.',
+      'ME SCHOOL TOMORROW GO': 'I will go to school tomorrow.',
+      'TOMORROW SCHOOL ME GO': 'I will go to school tomorrow.',
+      'TOMORROW ME SCHOOL GO': 'I will go to school tomorrow.',
+      'I SCHOOL TOMORROW GO': 'I will go to school tomorrow.',
+      'TOMORROW I SCHOOL GO': 'I will go to school tomorrow.',
+      'TOMORROW I GO SCHOOL': 'I will go to school tomorrow.',
+      'YOU FOOD WANT': 'Do you want food?',
+      'YOU WANT FOOD': 'Do you want food?',
+      'YOU WATER WANT': 'Do you want water?',
+      'YOU WANT WATER': 'Do you want water?',
+      'YOU LIKE TEA': 'Do you like tea?',
+      'YOU LIKE COFFEE': 'Do you like coffee?',
+      'YESTERDAY FRIEND MEET': 'I met my friend yesterday.',
+      'ME YESTERDAY FRIEND MEET': 'I met my friend yesterday.',
+      'I YESTERDAY FRIEND MEET': 'I met my friend yesterday.',
+      'ME FRIEND YESTERDAY MEET': 'I met my friend yesterday.',
+      'ME NOT LIKE TEA': "I don't like tea.",
+      'I NOT LIKE TEA': "I don't like tea.",
+      'ME NOT LIKE COFFEE': "I don't like coffee.",
+      'I NOT LIKE COFFEE': "I don't like coffee.",
+      'I GOING SCHOOL': 'I am going to school.',
+      'ME GOING SCHOOL': 'I am going to school.',
+      'YOU GO SCHOOL': 'Are you going to school?',
+      'I TIRED WANT SLEEP': 'I am tired and want to sleep.',
+      'WHERE YOU GO': 'Where are you going?',
+      'PLEASE HELP ME': 'Please help me.',
+      'HELP ME PLEASE': 'Please help me.',
+      'THANK-YOU VERY MUCH': 'Thank you very much.',
+      'THANK YOU VERY MUCH': 'Thank you very much.',
+      'THANK-YOU': 'Thank you.',
+      'THANK YOU': 'Thank you.',
+      'BATHROOM WHERE': 'Where is the bathroom?',
+      'WHERE BATHROOM': 'Where is the bathroom?',
+    };
+
+    if (FAST_IDIOMS[normalizedKey]) {
+      const fastResult = FAST_IDIOMS[normalizedKey];
+      return res.json({
+        raw_sequence: signs,
+        raw_sequence_text: signs.join(' '),
+        grammar_corrected_sentence: fastResult,
+        final_translation: fastResult,
+        confidence: 0.98,
+        fast_path: true,
       });
     }
 

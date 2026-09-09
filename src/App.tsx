@@ -85,7 +85,7 @@ export default function App() {
     lastWordTimestamp: null,
     isComplete: false,
   });
-  const [sentenceWindowMs, setSentenceWindowMs] = useState<number>(5000);
+  const [sentenceWindowMs, setSentenceWindowMs] = useState<number>(1500);
   const [sentenceTimeRemainingMs, setSentenceTimeRemainingMs] = useState<number>(0);
   const [inStudioView, setInStudioView] = useState<boolean>(false);
 
@@ -118,7 +118,7 @@ export default function App() {
     deviceId: '',
     autoSpeak: false,
     continuousMode: true,
-    sampleIntervalMs: 500,
+    sampleIntervalMs: 350,
     confidenceThreshold: 0.60,
     smartAutoTranslateWeirdSigns: true,
     fastMode: true,
@@ -648,14 +648,14 @@ export default function App() {
             quality = 0.80;
           } else {
             frameCount = 1;
-            delayMs = 35;
-            maxWidth = 420;
-            quality = 0.74;
+            delayMs = 25;
+            maxWidth = 380;
+            quality = 0.70;
           }
         } else {
           frameCount = settings.fastMode ? 1 : 2;
-          maxWidth = settings.fastMode ? 420 : 512;
-          quality = settings.fastMode ? 0.75 : 0.82;
+          maxWidth = settings.fastMode ? 380 : 512;
+          quality = settings.fastMode ? 0.72 : 0.82;
         }
 
         const frames = await aslRecognitionService.captureTemporalSequence(
@@ -716,10 +716,12 @@ export default function App() {
             setActiveSentence((prev) => {
               const updatedWords = [...prev.words, newWordObj];
               const updatedGlosses = updatedWords.map((w) => w.gloss || w.word.toUpperCase());
+              const localSynthesis = languageContextEngine.synthesizeGrammarSentence(updatedWords).finalTranslation;
+              const finalSentence = sentenceResult.synthesized_sentence?.trim() || localSynthesis || prev.sentenceText;
               return {
                 words: updatedWords,
-                sentenceText: sentenceResult.synthesized_sentence || prev.sentenceText,
-                synthesizedSentence: sentenceResult.synthesized_sentence,
+                sentenceText: finalSentence,
+                synthesizedSentence: finalSentence,
                 rawGlossSequence: updatedGlosses,
                 lastWordTimestamp: Date.now(),
                 isComplete: false,
@@ -1022,7 +1024,12 @@ export default function App() {
   }, []);
 
   const handleSelectQuickSentence = useCallback(
-    (sentence: string, gloss: string) => {
+    (sentence: string, gloss: string | string[]) => {
+      const glossArray = Array.isArray(gloss)
+        ? gloss
+        : gloss.replace(/[.,!?;:]+$/, '').split(/\s+/).filter(Boolean);
+      const glossText = Array.isArray(gloss) ? gloss.join(' ') : gloss;
+
       // 1. Speak if autoSpeak or requested
       if (settings.autoSpeak) {
         speechService.speak(sentence);
@@ -1034,10 +1041,10 @@ export default function App() {
 
       // 3. Set current result so TranslationPanel immediately displays the sentence
       const resultItem: ASLRecognitionResult = {
-        recognized_sign: gloss,
-        recognized_signs: [gloss],
+        recognized_sign: glossText,
+        recognized_signs: glossArray,
         english_translation: sentence,
-        confidence: 0.96,
+        confidence: 0.98,
         is_reliable: true,
         is_sentence: true,
         is_auto_translated: true,
@@ -1046,14 +1053,19 @@ export default function App() {
       setCurrentResult(resultItem);
       setRecognitionStatus('success');
 
-      // 4. Update active sentence area
-      const words = sentence.replace(/[.,!?;:]+$/, '').split(/\s+/).filter(Boolean);
+      // 4. Update active sentence area with individual gloss objects
+      const words = glossArray.map((g, i) => ({
+        id: `qw-${Date.now()}-${i}`,
+        word: g.toLowerCase(),
+        gloss: g.toUpperCase(),
+        confidence: 0.98,
+        timestamp: Date.now(),
+      }));
+
       setActiveSentence({
-        words: words.map((w, i) => ({
-          id: `qw-${Date.now()}-${i}`,
-          word: w,
-          timestamp: Date.now(),
-        })),
+        words,
+        rawGlossSequence: glossArray,
+        synthesizedSentence: sentence,
         sentenceText: sentence,
         lastWordTimestamp: Date.now(),
         isComplete: true,
@@ -1066,9 +1078,9 @@ export default function App() {
         id: `quick-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         timestamp: Date.now(),
         formattedTime,
-        recognized_signs: [gloss],
+        recognized_signs: glossArray,
         english_translation: sentence,
-        confidence: 0.96,
+        confidence: 0.98,
         is_reliable: true,
         is_sentence: true,
         is_auto_translated: true,
@@ -1283,6 +1295,7 @@ export default function App() {
                       currentResult={currentResult}
                       recognitionStatus={recognitionStatus}
                       isTranslating={isTranslating}
+                      activeSentence={activeSentence}
                       onClearTranslation={handleClearTranslation}
                       onSpeakText={handleSpeakText}
                       onRetryTranslation={() => processFrameSequence(true)}
