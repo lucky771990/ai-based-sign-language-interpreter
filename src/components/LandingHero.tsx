@@ -25,6 +25,7 @@ interface LandingHeroProps {
   onOpenHowItWorks: () => void;
   onOpenPermissionGuide?: () => void;
   onEnterStudioWithoutCamera?: () => void;
+  onStartSimulation?: () => void;
   isRequesting: boolean;
   cameraPermission?: CameraPermissionState;
   permissionError?: string | null;
@@ -36,6 +37,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   onOpenHowItWorks,
   onOpenPermissionGuide,
   onEnterStudioWithoutCamera,
+  onStartSimulation,
   isRequesting,
   cameraPermission,
   permissionError,
@@ -85,6 +87,16 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Try Again</span>
               </button>
+              {onStartSimulation && (
+                <button
+                  id="landing-start-sim-btn"
+                  onClick={onStartSimulation}
+                  className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Try Demo Simulator (No Camera)</span>
+                </button>
+              )}
               {onOpenPermissionGuide && (
                 <button
                   onClick={onOpenPermissionGuide}

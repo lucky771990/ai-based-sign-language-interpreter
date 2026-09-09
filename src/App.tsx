@@ -26,6 +26,7 @@ import { speechService } from './services/speechService';
 import { temporalVisionTracker } from './services/temporalVisionTracker';
 import { languageContextEngine } from './services/languageContextEngine';
 import { cnnSentenceEngine } from './services/cnnSentenceEngine';
+import { virtualCameraSimulator } from './services/virtualCameraSimulator';
 import { Header } from './components/Header';
 import { LandingHero } from './components/LandingHero';
 import { CameraPanel } from './components/CameraPanel';
@@ -48,15 +49,19 @@ import { Sparkles, ShieldCheck, Heart, Volume2, Hand, MessageSquare } from 'luci
  * Format an array of single words into a clean, punctuated English sentence
  * using LanguageContextEngine rule-based grammar synthesis.
  */
-function assembleSentence(words: (ActiveSentenceWord | string)[], isComplete = false): string {
+function assembleSentence(words: (ActiveSentenceWord | string)[], isComplete = false, signLanguage: SignLanguage = 'ASL'): string {
   if (!words || words.length === 0) return '';
   const wordObjs: ActiveSentenceWord[] = words.map((w, idx) => {
     if (typeof w === 'string') {
-      return { id: `w-${idx}`, word: w, timestamp: Date.now() };
+      return { id: `w-${idx}`, word: w.toLowerCase(), gloss: w.toUpperCase(), timestamp: Date.now() };
     }
-    return w;
+    return {
+      ...w,
+      word: w.word.toLowerCase(),
+      gloss: w.gloss || w.word.toUpperCase(),
+    };
   });
-  const synth = languageContextEngine.synthesizeGrammarSentence(wordObjs);
+  const synth = languageContextEngine.synthesizeGrammarSentence(wordObjs, signLanguage);
   return synth.finalTranslation;
 }
 
@@ -208,6 +213,7 @@ export default function App() {
    * Stop all active camera tracks and clean up video stream
    */
   const stopCameraStream = useCallback(() => {
+    virtualCameraSimulator.stop();
     temporalVisionTracker.stop();
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => {
@@ -230,7 +236,8 @@ export default function App() {
 
   // Synchronize temporal vision tracker lifecycle with active camera stream
   useEffect(() => {
-    if (cameraPermission === 'granted' && videoRef.current) {
+    const isStreamActive = cameraPermission === 'granted' || cameraPermission === 'simulated';
+    if (isStreamActive && videoRef.current) {
       // Ensure video element has active stream attached
       if (streamRef.current && videoRef.current.srcObject !== streamRef.current) {
         videoRef.current.srcObject = streamRef.current;
@@ -264,7 +271,8 @@ export default function App() {
 
   // Keep active video element synced across mode switches (Sentence Studio <-> Vocabulary)
   useEffect(() => {
-    if (cameraPermission === 'granted' && streamRef.current && videoRef.current) {
+    const isStreamActive = cameraPermission === 'granted' || cameraPermission === 'simulated';
+    if (isStreamActive && streamRef.current && videoRef.current) {
       if (videoRef.current.srcObject !== streamRef.current) {
         videoRef.current.srcObject = streamRef.current;
       }
@@ -403,15 +411,22 @@ export default function App() {
         bindAndPlay();
       }, 50);
     } catch (err: any) {
-      console.error('Camera getUserMedia error:', err);
       stopCameraStream();
 
       const errMsg = err?.message || '';
       const errName = err?.name || '';
+      const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
       const isSystemDenied =
         errMsg.toLowerCase().includes('system') ||
         errMsg.toLowerCase().includes('permission denied by system') ||
         errMsg.toLowerCase().includes('blocked by os');
+
+      const isPermissionDenied =
+        errName === 'NotAllowedError' ||
+        errName === 'PermissionDeniedError' ||
+        errName === 'SecurityError' ||
+        errMsg.toLowerCase().includes('permission denied') ||
+        errMsg.toLowerCase().includes('permission dismissed');
 
       const isNotFound =
         errName === 'NotFoundError' ||
@@ -422,39 +437,74 @@ export default function App() {
         errMsg.toLowerCase().includes('no device') ||
         errMsg.toLowerCase().includes('could not start video source');
 
-      if (
-        errName === 'NotAllowedError' ||
-        errName === 'PermissionDeniedError' ||
-        errName === 'SecurityError' ||
-        errMsg.includes('Permission denied')
-      ) {
+      if (isPermissionDenied) {
+        console.warn('Camera permission was not granted by user or browser:', errName, errMsg);
         setCameraPermission('denied');
         setAppState('CAMERA_DENIED');
-        setPermissionError(
-          isSystemDenied
-            ? 'Camera access is blocked by your operating system privacy settings (macOS Privacy & Security > Camera, or Windows Camera Settings). Please allow camera access and try again.'
-            : 'Camera access was denied by your browser. Please click the camera/lock icon in the browser address bar to allow access.'
-        );
         if (isSystemDenied) {
+          setPermissionError(
+            'Camera access is blocked by your operating system privacy settings (macOS Privacy & Security > Camera, or Windows Camera Settings). Please allow camera access or use the Demo Simulator.'
+          );
           setShowPermissionGuideModal(true);
+        } else if (isInIframe) {
+          setPermissionError(
+            'Camera access is restricted inside the embedded preview frame. Click "Open in New Tab" to grant permission in a full window, or launch the Virtual Sign Simulator below.'
+          );
+        } else {
+          setPermissionError(
+            'Camera access was not granted by your browser. Please click the camera/lock icon in your address bar to allow access, or try the Virtual Sign Simulator.'
+          );
         }
       } else if (isNotFound) {
+        console.warn('Camera device not detected:', errName, errMsg);
         setCameraPermission('unavailable');
         setAppState('CAMERA_ERROR');
         setPermissionError(
-          'No working camera device was found or the requested webcam was disconnected. Please connect a webcam or select another video device.'
+          'No working camera device was detected. Please connect an external webcam or try the Virtual Sign Simulator.'
         );
       } else if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+        console.warn('Camera in use by other process:', errName, errMsg);
         setCameraPermission('unavailable');
         setAppState('CAMERA_ERROR');
         setPermissionError('The camera is currently in use by another application or video tab. Please close other apps and try again.');
       } else {
+        console.warn('Camera stream acquisition note:', errName, errMsg);
         setCameraPermission('unavailable');
         setAppState('CAMERA_ERROR');
         setPermissionError(errMsg || 'Failed to acquire camera stream.');
       }
     }
   }, [settings.deviceId, stopCameraStream, refreshDevices]);
+
+  /**
+   * Start synthetic/virtual sign simulation stream
+   */
+  const startSimulation = useCallback(() => {
+    stopCameraStream();
+    setCameraPermission('simulated');
+    setAppState('SIMULATING');
+    setPermissionError(null);
+
+    const stream = virtualCameraSimulator.start();
+    streamRef.current = stream;
+
+    const bindAndPlay = async () => {
+      if (videoRef.current && stream) {
+        videoRef.current.srcObject = stream;
+        try {
+          await videoRef.current.play();
+        } catch (e) {
+          console.warn('Simulator video playback note:', e);
+        }
+      }
+    };
+
+    bindAndPlay();
+    setTimeout(bindAndPlay, 50);
+
+    setIsTranslating(true);
+    setInStudioView(true);
+  }, [stopCameraStream]);
 
   // Clean up on component unmount
   useEffect(() => {
@@ -505,12 +555,12 @@ export default function App() {
             {
               id: `w-${now}-${Math.random().toString(36).slice(2, 6)}`,
               word,
-              gloss,
+              gloss: gloss || word.toUpperCase(),
               timestamp: now,
             },
           ];
           const rawGlosses = updatedWords.map((w) => w.gloss || w.word.toUpperCase());
-          const grammarResult = languageContextEngine.synthesizeGrammarSentence(updatedWords);
+          const grammarResult = languageContextEngine.synthesizeGrammarSentence(updatedWords, signLanguage);
           return {
             words: updatedWords,
             rawGlossSequence: rawGlosses,
@@ -526,12 +576,12 @@ export default function App() {
           {
             id: `w-${now}-${Math.random().toString(36).slice(2, 6)}`,
             word,
-            gloss,
+            gloss: gloss || word.toUpperCase(),
             timestamp: now,
           },
         ];
         const rawGlosses = [gloss || word.toUpperCase()];
-        const grammarResult = languageContextEngine.synthesizeGrammarSentence(newWords);
+        const grammarResult = languageContextEngine.synthesizeGrammarSentence(newWords, signLanguage);
         return {
           words: newWords,
           rawGlossSequence: rawGlosses,
@@ -542,7 +592,7 @@ export default function App() {
         };
       });
     },
-    [sentenceWindowMs]
+    [sentenceWindowMs, signLanguage]
   );
 
   /**
@@ -563,18 +613,18 @@ export default function App() {
         clearInterval(interval);
         setActiveSentence((prev) => {
           if (prev.isComplete || prev.words.length === 0) return prev;
-          const grammarResult = languageContextEngine.synthesizeGrammarSentence(prev.words);
+          const grammarResult = languageContextEngine.synthesizeGrammarSentence(prev.words, signLanguage);
           const completeSentence = grammarResult.finalTranslation;
 
-          // If there are 2 or more words in the completed sentence, record it to session history
-          if (prev.words.length >= 2) {
+          // If there are 1 or more words in the completed sentence, record it to session history
+          if (prev.words.length >= 1 && completeSentence) {
             const now = new Date();
             const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const historyItem: TranslationHistoryItem = {
               id: `sentence-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               timestamp: Date.now(),
               formattedTime,
-              recognized_signs: prev.words.map((w) => w.gloss || w.word),
+              recognized_signs: prev.words.map((w) => w.gloss || w.word.toUpperCase()),
               english_translation: completeSentence,
               confidence: 0.95,
               is_reliable: true,
@@ -942,52 +992,92 @@ export default function App() {
   const handleCompleteActiveSentence = useCallback(() => {
     setActiveSentence((prev) => {
       if (prev.words.length === 0) return prev;
-      const completeSentence = assembleSentence(prev.words.map((w) => w.word), true);
+      const grammarRes = languageContextEngine.synthesizeGrammarSentence(prev.words, signLanguage);
+      const completeSentence = grammarRes.finalTranslation || prev.sentenceText || prev.words.map((w) => w.word).join(' ');
       if (completeSentence) {
         languageContextEngine.addConversationHistory(completeSentence);
       }
-      if (prev.words.length >= 2) {
+      if (prev.words.length >= 1) {
         const now = new Date();
         const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const historyItem: TranslationHistoryItem = {
           id: `sentence-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           timestamp: Date.now(),
           formattedTime,
-          recognized_signs: prev.words.map((w) => w.gloss || w.word),
+          recognized_signs: prev.words.map((w) => w.gloss || w.word.toUpperCase()),
           english_translation: completeSentence,
           confidence: 0.95,
           is_reliable: true,
           is_sentence: true,
         };
         setHistory((hist) => [historyItem, ...hist]);
+
+        if (settings.autoSpeak) {
+          speechService.speak(completeSentence);
+        }
       }
       return {
         ...prev,
         sentenceText: completeSentence,
+        synthesizedSentence: completeSentence,
         isComplete: true,
       };
     });
     setSentenceTimeRemainingMs(0);
-  }, []);
+  }, [settings.autoSpeak, signLanguage]);
 
-  const handleRemoveActiveSentenceWord = useCallback((id: string) => {
+  const handleRemoveActiveSentenceWord = useCallback((idOrIndex: string | number) => {
     setActiveSentence((prev) => {
-      const updated = prev.words.filter((w) => w.id !== id);
+      const updated = typeof idOrIndex === 'number'
+        ? prev.words.filter((_, idx) => idx !== idOrIndex)
+        : prev.words.filter((w, idx) => w.id !== idOrIndex && idx !== Number(idOrIndex));
       if (updated.length === 0) {
         return {
           words: [],
+          rawGlossSequence: [],
           sentenceText: '',
+          synthesizedSentence: '',
           lastWordTimestamp: null,
           isComplete: false,
         };
       }
+      const grammarRes = languageContextEngine.synthesizeGrammarSentence(updated, signLanguage);
       return {
         ...prev,
         words: updated,
-        sentenceText: assembleSentence(updated.map((w) => w.word), prev.isComplete),
+        rawGlossSequence: updated.map((w) => w.gloss || w.word.toUpperCase()),
+        sentenceText: grammarRes.finalTranslation,
+        synthesizedSentence: grammarRes.finalTranslation,
       };
     });
-  }, []);
+  }, [signLanguage]);
+
+  const handleAddActiveSentenceWord = useCallback((wordOrGloss: string, customGloss?: string) => {
+    const now = Date.now();
+    const cleanGloss = (customGloss || wordOrGloss).trim().toUpperCase();
+    const cleanWord = wordOrGloss.trim().toLowerCase().replace(/-/g, ' ');
+
+    setActiveSentence((prev) => {
+      const newWordObj: ActiveSentenceWord = {
+        id: `sw-${now}-${Math.random().toString(36).slice(2, 6)}`,
+        word: cleanWord,
+        gloss: cleanGloss,
+        confidence: 0.98,
+        timestamp: now,
+      };
+      const updatedWords = [...prev.words, newWordObj];
+      const updatedGlosses = updatedWords.map((w) => w.gloss || w.word.toUpperCase());
+      const grammarRes = languageContextEngine.synthesizeGrammarSentence(updatedWords, signLanguage);
+      return {
+        words: updatedWords,
+        rawGlossSequence: updatedGlosses,
+        sentenceText: grammarRes.finalTranslation,
+        synthesizedSentence: grammarRes.finalTranslation,
+        lastWordTimestamp: now,
+        isComplete: false,
+      };
+    });
+  }, [signLanguage]);
 
   const handleChangeSentenceWindow = useCallback((windowMs: number) => {
     setSentenceWindowMs(windowMs);
@@ -1138,6 +1228,7 @@ export default function App() {
           /* Landing Screen before camera is requested */
           <LandingHero
             onStartCamera={() => startCamera()}
+            onStartSimulation={startSimulation}
             onOpenReference={() => setShowReferenceModal(true)}
             onOpenHowItWorks={() => {
               const el = document.getElementById('how-it-works-section');
@@ -1230,11 +1321,13 @@ export default function App() {
                 timeRemainingMs={sentenceTimeRemainingMs}
                 timeWindowMs={sentenceWindowMs}
                 onStartCamera={() => startCamera()}
+                onStartSimulation={startSimulation}
                 onStopCamera={handleStopAll}
                 onToggleTranslation={handleToggleTranslation}
                 onClearSentence={handleClearActiveSentence}
                 onCompleteSentence={handleCompleteActiveSentence}
                 onRemoveWord={handleRemoveActiveSentenceWord}
+                onAddWord={handleAddActiveSentenceWord}
                 onSpeakSentence={handleSpeakText}
                 onChangeSpeedMode={setSentenceSpeedMode}
                 currentSpeedMode={sentenceSpeedMode}
@@ -1264,6 +1357,7 @@ export default function App() {
                       settings={settings}
                       availableDevices={availableDevices}
                       onStartCameraAndTranslation={() => startCamera()}
+                      onStartSimulation={startSimulation}
                       onStopCameraAndTranslation={handleStopAll}
                       onToggleTranslation={handleToggleTranslation}
                       onToggleMirror={handleToggleMirror}
@@ -1285,6 +1379,7 @@ export default function App() {
                       onClearSentence={handleClearActiveSentence}
                       onCompleteSentence={handleCompleteActiveSentence}
                       onRemoveWord={handleRemoveActiveSentenceWord}
+                      onAddWord={handleAddActiveSentenceWord}
                       onSpeakSentence={handleSpeakText}
                       rawGlosses={activeSentence.rawGlossSequence}
                       onOpenCorrectionModal={() => setShowCorrectionModal(true)}
@@ -1384,6 +1479,10 @@ export default function App() {
         onRetry={() => {
           setShowPermissionGuideModal(false);
           startCamera();
+        }}
+        onStartSimulation={() => {
+          setShowPermissionGuideModal(false);
+          startSimulation();
         }}
       />
 

@@ -23,8 +23,10 @@ interface ActiveSentenceAreaProps {
   onClearSentence: () => void;
   onCompleteSentence: () => void;
   onRemoveWord: (id: string) => void;
+  onAddWord?: (wordOrGloss: string) => void;
   onSpeakSentence: (text: string) => void;
   onOpenCorrectionModal?: () => void;
+  rawGlosses?: string[];
 }
 
 export const ActiveSentenceArea: React.FC<ActiveSentenceAreaProps> = ({
@@ -35,6 +37,7 @@ export const ActiveSentenceArea: React.FC<ActiveSentenceAreaProps> = ({
   onClearSentence,
   onCompleteSentence,
   onRemoveWord,
+  onAddWord,
   onSpeakSentence,
   onOpenCorrectionModal,
 }) => {
@@ -249,22 +252,55 @@ export const ActiveSentenceArea: React.FC<ActiveSentenceAreaProps> = ({
                 Perform another single sign within <strong className="text-indigo-300 font-semibold">{remainingSecs}s</strong> to append it to this sentence, or tap <span className="text-slate-200 font-semibold">Finish</span> to conclude.
               </p>
             )}
+
+            {/* Quick Sign Palette */}
+            {onAddWord && (
+              <div className="pt-2 border-t border-slate-800/60 space-y-1">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Quick-add signs:</span>
+                <div className="flex flex-wrap gap-1">
+                  {['HELLO', 'ME', 'YOU', 'WANT', 'WATER', 'FOOD', 'GO', 'SCHOOL', 'TOMORROW', 'LIKE', 'COFFEE', 'PLEASE', 'HELP'].map((gloss) => (
+                    <button
+                      key={gloss}
+                      type="button"
+                      onClick={() => onAddWord(gloss)}
+                      className="px-2 py-0.5 rounded bg-slate-800 hover:bg-indigo-600 hover:text-white border border-slate-700 text-[10px] font-mono font-medium text-slate-300 transition-colors cursor-pointer"
+                    >
+                      +{gloss}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           /* Empty Waiting State */
           <div
             id="active-sentence-empty-state"
-            className="py-5 px-4 text-center border border-dashed border-slate-800 rounded-xl space-y-1.5 bg-slate-950/30"
+            className="py-4 px-4 text-center border border-dashed border-slate-800 rounded-xl space-y-2 bg-slate-950/30"
           >
-            <div className="w-8 h-8 rounded-full bg-slate-800/60 text-slate-400 flex items-center justify-center mx-auto mb-2">
+            <div className="w-8 h-8 rounded-full bg-slate-800/60 text-slate-400 flex items-center justify-center mx-auto mb-1">
               <MessageSquareText className="w-4 h-4 text-indigo-400" />
             </div>
             <p className="text-xs sm:text-sm font-semibold text-slate-300">
               No active sentence assembling
             </p>
             <p className="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">
-              When you perform sequential single-word signs within {timeWindowMs / 1000} seconds of each other (e.g., <code className="text-indigo-300 font-mono">HELLO</code> → <code className="text-indigo-300 font-mono">FRIEND</code>), they will automatically group here into a complete sentence.
+              Sequential single-word signs within {timeWindowMs / 1000}s group automatically. Sign with camera or tap any sign below to test:
             </p>
+            {onAddWord && (
+              <div className="flex flex-wrap justify-center gap-1.5 pt-1">
+                {['HELLO', 'ME', 'YOU', 'WANT', 'WATER', 'GO', 'SCHOOL', 'TOMORROW', 'LIKE', 'PLEASE'].map((gloss) => (
+                  <button
+                    key={gloss}
+                    type="button"
+                    onClick={() => onAddWord(gloss)}
+                    className="px-2 py-1 rounded bg-slate-800/90 hover:bg-indigo-600 hover:text-white border border-slate-700 text-[11px] font-mono font-medium text-slate-300 transition-colors cursor-pointer"
+                  >
+                    +{gloss}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

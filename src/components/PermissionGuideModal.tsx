@@ -6,19 +6,22 @@ import {
   Globe,
   Smartphone,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 
 interface PermissionGuideModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRetry: () => void;
+  onStartSimulation?: () => void;
 }
 
 export const PermissionGuideModal: React.FC<PermissionGuideModalProps> = ({
   isOpen,
   onClose,
   onRetry,
+  onStartSimulation,
 }) => {
   const [activeTab, setActiveTab] = useState<'desktop' | 'mobile'>('desktop');
 
@@ -148,7 +151,7 @@ export const PermissionGuideModal: React.FC<PermissionGuideModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-950/90 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
@@ -156,17 +159,33 @@ export const PermissionGuideModal: React.FC<PermissionGuideModalProps> = ({
             Close
           </button>
 
-          <button
-            id="guide-retry-camera-button"
-            onClick={() => {
-              onClose();
-              onRetry();
-            }}
-            className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Try Requesting Camera Again</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {onStartSimulation && (
+              <button
+                id="guide-start-sim-button"
+                onClick={() => {
+                  onClose();
+                  onStartSimulation();
+                }}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Launch Demo Simulator</span>
+              </button>
+            )}
+
+            <button
+              id="guide-retry-camera-button"
+              onClick={() => {
+                onClose();
+                onRetry();
+              }}
+              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Try Requesting Camera Again</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

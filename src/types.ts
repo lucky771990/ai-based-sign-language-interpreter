@@ -6,7 +6,8 @@ export type AppState =
   | 'CAMERA_DENIED'
   | 'CAMERA_ERROR'
   | 'AI_ERROR'
-  | 'CONFIGURATION_ERROR';
+  | 'CONFIGURATION_ERROR'
+  | 'SIMULATING';
 
 export type CameraPermissionState =
   | 'unrequested'
@@ -14,7 +15,8 @@ export type CameraPermissionState =
   | 'granted'
   | 'denied'
   | 'blocked'
-  | 'unavailable';
+  | 'unavailable'
+  | 'simulated';
 
 export type RecognitionStatus =
   | 'idle'

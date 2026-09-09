@@ -452,8 +452,11 @@ class LanguageContextEngine {
     const idiomaticPhrases: Record<string, string> = {
       'NAME YOU WHAT': 'What is your name',
       'WHAT YOUR NAME': 'What is your name',
+      'WHAT NAME YOU': 'What is your name',
       'HOW YOU': 'How are you',
+      'HOW ARE YOU': 'How are you',
       'NICE MEET YOU': 'Nice to meet you',
+      'MEET YOU NICE': 'Nice to meet you',
       'GOOD SEE YOU': 'Good to see you',
       'ME SCHOOL TOMORROW GO': 'I will go to school tomorrow',
       'TOMORROW SCHOOL ME GO': 'I will go to school tomorrow',
@@ -477,10 +480,19 @@ class LanguageContextEngine {
       'I NOT LIKE COFFEE': "I don't like coffee",
       'I GOING SCHOOL': 'I am going to school',
       'ME GOING SCHOOL': 'I am going to school',
+      'I GO SCHOOL': 'I am going to school',
+      'ME GO SCHOOL': 'I am going to school',
       'YOU GO SCHOOL': 'Are you going to school',
       'YOU GOING SCHOOL': 'Are you going to school',
       'I HOSPITAL GO DOCTOR MEET': 'I am going to the hospital to meet the doctor',
       'I TIRED WANT SLEEP': 'I am tired and want to sleep',
+      'ME TIRED WANT SLEEP': 'I am tired and want to sleep',
+      'I WANT SLEEP': 'I want to sleep',
+      'ME WANT SLEEP': 'I want to sleep',
+      'I WANT GO HOME': 'I want to go home',
+      'ME WANT GO HOME': 'I want to go home',
+      'I GO HOME': 'I am going home',
+      'ME GO HOME': 'I am going home',
       'I TOMORROW MARKET GO': 'I will go to the market tomorrow',
       'TOMORROW MARKET I GO': 'I will go to the market tomorrow',
       'TOMORROW I MARKET GO': 'I will go to the market tomorrow',
@@ -489,42 +501,103 @@ class LanguageContextEngine {
       'I YESTERDAY MARKET GO': 'I went to the market yesterday',
       'WHERE YOU GO': 'Where are you going',
       'YOU GO WHERE': 'Where are you going',
+      'BATHROOM WHERE': 'Where is the bathroom',
+      'WHERE BATHROOM': 'Where is the bathroom',
+      'DOCTOR WHERE': 'Where is the doctor',
+      'WHERE DOCTOR': 'Where is the doctor',
+      'HOSPITAL WHERE': 'Where is the hospital',
+      'WHERE HOSPITAL': 'Where is the hospital',
       'ME TIRED': 'I am tired',
       'I TIRED': 'I am tired',
       'ME HAPPY': 'I am happy',
       'I HAPPY': 'I am happy',
       'ME HUNGRY': 'I am hungry',
       'I HUNGRY': 'I am hungry',
+      'ME SICK': 'I am sick',
+      'I SICK': 'I am sick',
+      'ME THIRSTY': 'I am thirsty',
+      'I THIRSTY': 'I am thirsty',
+      'YOU OKAY': 'Are you okay',
+      'YOU OK': 'Are you okay',
+      'YOU READY': 'Are you ready',
+      'YOU TIRED': 'Are you tired',
       'ME NOT UNDERSTAND': 'I do not understand',
       'I NOT UNDERSTAND': 'I do not understand',
       'YOU UNDERSTAND': 'Do you understand',
       'I NEED HELP': 'I need help',
+      'ME NEED HELP': 'I need help',
       'PLEASE HELP ME': 'Please help me',
+      'HELP ME PLEASE': 'Please help me',
       'THANK YOU VERY MUCH': 'Thank you very much',
+      'THANK-YOU VERY MUCH': 'Thank you very much',
       'I LIKE COFFEE': 'I like coffee',
+      'ME LIKE COFFEE': 'I like coffee',
+      'I LIKE TEA': 'I like tea',
+      'ME LIKE TEA': 'I like tea',
       'I WANT WATER': 'I want water',
+      'ME WANT WATER': 'I want water',
+      'WATER I WANT': 'I want water',
+      'WATER ME WANT': 'I want water',
+      'I WANT COFFEE': 'I want coffee',
+      'ME WANT COFFEE': 'I want coffee',
+      'I WANT FOOD': 'I want food',
+      'ME WANT FOOD': 'I want food',
+      'FOOD I WANT': 'I want food',
+      'FOOD ME WANT': 'I want food',
       'SEE YOU LATER': 'See you later',
       'HAVE GOOD DAY': 'Have a good day',
       'HAVE NICE DAY': 'Have a nice day',
+      'GOOD MORNING': 'Good morning',
+      'GOOD NIGHT': 'Good night',
+      'GOOD AFTERNOON': 'Good afternoon',
     };
 
     if (idiomaticPhrases[joined]) {
-      return `${idiomaticPhrases[joined]}${punctuation}`;
+      const phrasePunct = (joined.includes('WHERE') || joined.includes('WHAT') || joined.includes('HOW') || joined.startsWith('YOU ')) && !punctuation.includes('!') ? '?' : punctuation;
+      return `${idiomaticPhrases[joined]}${phrasePunct}`;
     }
 
-    // 2. Systematic Negation Preservation Check
+    // 2. Single word / sign handling
+    if (upperGlosses.length === 1) {
+      const g = upperGlosses[0].replace(/-/g, ' ');
+      const singleWordMap: Record<string, string> = {
+        'HELLO': 'Hello.',
+        'HI': 'Hi.',
+        'THANK YOU': 'Thank you.',
+        'THANKS': 'Thanks.',
+        'PLEASE': 'Please.',
+        'YES': 'Yes.',
+        'NO': 'No.',
+        'GOODBYE': 'Goodbye.',
+        'BYE': 'Goodbye.',
+        'SORRY': 'I am sorry.',
+        'WELCOME': 'You are welcome.',
+        'HELP': 'Help!',
+        'WATER': 'Water.',
+        'FOOD': 'Food.',
+        'COFFEE': 'Coffee.',
+        'TEA': 'Tea.',
+      };
+      if (singleWordMap[g]) return singleWordMap[g];
+      const clean = this.glossToEnglishWord(upperGlosses[0]);
+      return `${clean.charAt(0).toUpperCase()}${clean.slice(1)}${punctuation}`;
+    }
+
+    // 3. Systematic Negation Preservation Check
     const negationWords = ['NOT', 'NO', 'DON-T', "DON'T", 'DONT', 'NEVER', "CAN'T", 'CANT', "WON'T", 'WONT'];
     const hasNegation = upperGlosses.some((g) => negationWords.includes(g));
 
-    // 3. Rule-based linguistic reconstruction:
-    // Extract Time markers, Subject, Verb, Object, Modifiers
+    // 4. Rule-based linguistic reconstruction:
+    // Extract Time markers, Subject, Verb, Object, Modifiers, Question Words
     const timeMarkers = ['TOMORROW', 'YESTERDAY', 'TODAY', 'NOW', 'SOON', 'LATER', 'MORNING', 'NIGHT'];
     const subjects = ['I', 'ME', 'YOU', 'HE', 'SHE', 'IT', 'WE', 'THEY', 'FRIEND', 'FAMILY', 'TEACHER', 'DOCTOR'];
-    const verbs = ['GO', 'GOING', 'WANT', 'NEED', 'LIKE', 'HAVE', 'SEE', 'EAT', 'DRINK', 'MAKE', 'LEARN', 'HELP', 'KNOW', 'BUY', 'MEET', 'SLEEP'];
+    const verbs = ['GO', 'GOING', 'WANT', 'NEED', 'LIKE', 'HAVE', 'SEE', 'EAT', 'DRINK', 'MAKE', 'LEARN', 'HELP', 'KNOW', 'BUY', 'MEET', 'SLEEP', 'UNDERSTAND'];
+    const adjectives = ['TIRED', 'HUNGRY', 'SICK', 'HAPPY', 'SAD', 'BUSY', 'READY', 'OKAY', 'OK', 'FINE', 'THIRSTY', 'GOOD', 'BAD', 'LATE', 'EARLY'];
 
     let timeWord: string | null = null;
     let subjectWord: string | null = null;
     let verbWord: string | null = null;
+    let adjWord: string | null = null;
     const remainingWords: string[] = [];
 
     for (let i = 0; i < upperGlosses.length; i++) {
@@ -535,20 +608,55 @@ class LanguageContextEngine {
         subjectWord = g === 'ME' ? 'I' : g;
       } else if (!verbWord && verbs.includes(g)) {
         verbWord = g;
-      } else if (!negationWords.includes(g)) {
-        remainingWords.push(originalWords[i] || g.toLowerCase());
+      } else if (!adjWord && adjectives.includes(g)) {
+        adjWord = g;
+      } else if (!negationWords.includes(g) && g !== 'WHERE' && g !== 'WHAT' && g !== 'HOW') {
+        remainingWords.push(this.glossToEnglishWord(originalWords[i] || g));
       }
+    }
+
+    // Question word detection (WHERE, WHAT, HOW)
+    if (upperGlosses.includes('WHERE')) {
+      const target = remainingWords.length > 0 ? remainingWords.join(' ') : (subjectWord ? subjectWord.toLowerCase() : 'it');
+      const isPlural = target.endsWith('s') && !target.endsWith('ss');
+      const verb = isPlural ? 'are' : 'is';
+      const article = (!target.startsWith('the') && !target.startsWith('my') && !target.startsWith('your') && target !== 'you') ? 'the ' : '';
+      return `Where ${verb} ${article}${target}?`;
+    }
+
+    if (upperGlosses.includes('WHAT')) {
+      if (upperGlosses.includes('NAME') || remainingWords.includes('name')) {
+        return 'What is your name?';
+      }
+      const target = remainingWords.length > 0 ? remainingWords.join(' ') : 'this';
+      return `What is ${target}?`;
+    }
+
+    if (upperGlosses.includes('HOW')) {
+      if (subjectWord === 'YOU' || upperGlosses.includes('YOU')) {
+        return 'How are you?';
+      }
+    }
+
+    // Copula + Adjective (e.g. ME TIRED -> I am tired. / YOU OKAY -> Are you okay?)
+    if (subjectWord && adjWord && !verbWord) {
+      const adjLower = adjWord.toLowerCase() === 'ok' ? 'okay' : adjWord.toLowerCase();
+      if (subjectWord === 'YOU') {
+        return `Are you ${adjLower}?`;
+      }
+      const aux = subjectWord === 'I' ? 'am' : (subjectWord === 'HE' || subjectWord === 'SHE' || subjectWord === 'IT') ? 'is' : 'are';
+      return `${subjectWord} ${aux} ${adjLower}${punctuation}`;
     }
 
     // If negation is present, faithfully reconstruct without inverting polarity
     if (hasNegation && verbWord) {
       const subj = subjectWord || 'I';
       const obj = remainingWords.length > 0 ? ` ${remainingWords.join(' ')}` : '';
-      if (verbWord === 'LIKE' || verbWord === 'WANT' || verbWord === 'KNOW' || verbWord === 'UNDERSTAND') {
+      if (verbWord === 'LIKE' || verbWord === 'WANT' || verbWord === 'KNOW' || verbWord === 'UNDERSTAND' || verbWord === 'NEED') {
         const aux = (subj === 'HE' || subj === 'SHE' || subj === 'IT') ? "doesn't" : "don't";
         return `${subj} ${aux} ${verbWord.toLowerCase()}${obj}${punctuation}`;
       } else if (verbWord === 'GO') {
-        return `${subj} will not go to the${obj}${punctuation}`;
+        return `${subj} will not go${obj ? ' to ' + obj.trim() : ''}${punctuation}`;
       } else {
         return `${subj} did not ${verbWord.toLowerCase()}${obj}${punctuation}`;
       }
@@ -556,11 +664,11 @@ class LanguageContextEngine {
 
     // If standard Time + Subject + Verb + Object recognized:
     if (timeWord && subjectWord && verbWord) {
-      let verbForm = verbWord.toLowerCase();
+      const verbForm = verbWord.toLowerCase();
       let prep = '';
       if (verbWord === 'GO' || verbWord === 'GOING') {
         prep = 'to ';
-        if (remainingWords.length > 0 && !remainingWords[0].startsWith('the') && !remainingWords[0].startsWith('school')) {
+        if (remainingWords.length > 0 && !remainingWords[0].startsWith('the') && !remainingWords[0].startsWith('school') && remainingWords[0] !== 'home') {
           prep = 'to the ';
         }
       }
@@ -569,19 +677,36 @@ class LanguageContextEngine {
         const obj = remainingWords.length > 0 ? `${prep}${remainingWords.join(' ')}` : '';
         return `${subjectWord} will ${verbForm === 'going' ? 'go' : verbForm} ${obj} ${timeWord.toLowerCase()}${punctuation}`.replace(/\s+/g, ' ').trim();
       } else if (timeWord === 'YESTERDAY') {
-        const pastVerb = verbWord === 'GO' || verbWord === 'GOING' ? 'went' : verbWord === 'MEET' ? 'met' : `${verbForm}ed`;
+        const pastVerb = verbWord === 'GO' || verbWord === 'GOING' ? 'went' : verbWord === 'MEET' ? 'met' : verbWord === 'SEE' ? 'saw' : `${verbForm}ed`;
         const obj = remainingWords.length > 0 ? `${prep}${remainingWords.join(' ')}` : '';
         return `${subjectWord} ${pastVerb} ${obj} yesterday${punctuation}`.replace(/\s+/g, ' ').trim();
       }
     }
 
-    // Questions without Time markers (e.g. YOU FOOD WANT -> Do you want food?)
-    if (subjectWord === 'YOU' && verbWord && (punctuation === '?' || this.detectIsQuestion(upperGlosses))) {
-      const obj = remainingWords.length > 0 ? ` ${remainingWords.join(' ')}` : '';
+    // SVO / SOV / OSV restoration without time markers (e.g. ME WATER WANT or I WANT WATER)
+    if (subjectWord && verbWord) {
+      let verbForm = verbWord.toLowerCase();
+      const isQuestion = subjectWord === 'YOU' && (punctuation === '?' || this.detectIsQuestion(upperGlosses));
+
       if (verbWord === 'GO' || verbWord === 'GOING') {
-        return `Are you going to${obj}?`;
+        const loc = remainingWords.length > 0 ? remainingWords.join(' ') : '';
+        const prep = loc === 'home' ? '' : (loc.startsWith('the') || loc.startsWith('school') ? 'to ' : 'to the ');
+        if (isQuestion) {
+          return `Are you going ${prep}${loc}?`.replace(/\s+/g, ' ').trim();
+        }
+        const aux = subjectWord === 'I' ? 'am' : subjectWord === 'YOU' ? 'are' : (subjectWord === 'HE' || subjectWord === 'SHE') ? 'is' : 'are';
+        return `${subjectWord} ${aux} going ${prep}${loc}${punctuation}`.replace(/\s+/g, ' ').trim();
       }
-      return `Do you ${verbWord.toLowerCase()}${obj}?`;
+
+      if (isQuestion) {
+        const obj = remainingWords.length > 0 ? ` ${remainingWords.join(' ')}` : '';
+        return `Do you ${verbForm}${obj}?`;
+      }
+
+      const thirdPerson = (subjectWord === 'HE' || subjectWord === 'SHE' || subjectWord === 'IT');
+      const conjugatedVerb = thirdPerson ? `${verbForm}s` : verbForm;
+      const obj = remainingWords.length > 0 ? ` ${remainingWords.join(' ')}` : '';
+      return `${subjectWord} ${conjugatedVerb}${obj}${punctuation}`;
     }
 
     // Present continuous restoration (e.g. I GOING SCHOOL -> I am going to school.)
@@ -591,7 +716,7 @@ class LanguageContextEngine {
       return `${subjectWord} ${aux} going${obj}${punctuation}`;
     }
 
-    // 3. Fallback: Assemble preserved words cleanly, capitalizing first letter and honoring punctuation
+    // 5. Fallback: Assemble preserved words cleanly, capitalizing first letter and honoring punctuation
     const words = originalWords.map((w, idx) => {
       const clean = w.trim().replace(/[.,!?;:]+$/, '');
       if (clean.toLowerCase() === 'me' && idx === 0) return 'I';

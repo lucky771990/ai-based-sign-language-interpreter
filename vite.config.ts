@@ -27,8 +27,8 @@ function githubPagesSpaFallback(): Plugin {
 }
 
 export default defineConfig(() => {
-  // Support custom base path (e.g. /my-repo-name/) or relative path ('./') by default
-  const basePath = process.env.BASE_PATH || process.env.VITE_BASE_PATH || './';
+  // Support custom base path (e.g. /my-repo-name/) or root path ('/') by default
+  const basePath = process.env.BASE_PATH || process.env.VITE_BASE_PATH || '/';
 
   return {
     base: basePath,
@@ -45,6 +45,7 @@ export default defineConfig(() => {
       emptyOutDir: false,
     },
     server: {
+      allowedHosts: true as const,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},

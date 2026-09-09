@@ -262,9 +262,11 @@ Return verified sign recognition, natural translation, and candidate alternative
           config: {
             systemInstruction,
             temperature: 0.1,
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.MINIMAL,
-            },
+            ...(modelName.startsWith('gemini-3') ? {
+              thinkingConfig: {
+                thinkingLevel: ThinkingLevel.MINIMAL,
+              },
+            } : {}),
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
@@ -488,15 +490,16 @@ app.post('/api/translate-sentence', async (req, res) => {
 - Predicted Handshape Cluster: ${cnnFeatures.handshapeCluster}
 - Temporal Receptive Cadence: ${cnnFeatures.receptiveFieldCadence} (Apex Prob: ${(cnnFeatures.apexProbability * 100).toFixed(1)}%, IsApex: ${cnnFeatures.isApex ? 'YES' : 'NO'}, Boundary Prob: ${(cnnFeatures.boundaryProbability * 100).toFixed(1)}%)
 - Spatial Conv Channels: [V-Edge=${cnnFeatures.convolutionActivations?.[0] || 0}, H-Edge=${cnnFeatures.convolutionActivations?.[1] || 0}, Gabor=${cnnFeatures.convolutionActivations?.[2] || 0}, Saliency=${cnnFeatures.convolutionActivations?.[3] || 0}]
-- CNN ACCURACY CONSTRAINTS:
-  * If Receptive Cadence is 'TRANSITION_EPENTHESIS' and IsApex is NO, hands are in movement epenthesis. Output new_gloss: "NONE" to prevent transition noise from corrupting the ongoing sentence.
-  * If Receptive Cadence is 'SUSTAINED_HOLD', signer is pausing on the current sign. Output new_gloss: "NONE", is_holding_previous: true, and cadence_state: "hold".
-  * If Receptive Cadence is 'LEXICAL_APEX' or IsApex is YES, verify articulation against handshape cluster "${cnnFeatures.handshapeCluster}".`
+- SENSOR HINTS:
+  * Handshape and motion dynamics provide supporting cues.
+  * If the signer is forming or completing a recognizable sign, identify the sign and output new_gloss.
+  * If the signer is holding the previously signed sign, set is_holding_previous: true and new_gloss: "NONE".
+  * Only output new_gloss: "NONE" when hands are at rest or no communicative sign is present.`
       : '';
 
     const existingContext = existingGlosses.length > 0
-      ? `Active sentence glosses signed so far: [${existingGlosses.join(', ')}]`
-      : 'Sentence start: No signs performed yet. If no new sign is actively being formed, output new_gloss: "NONE" and synthesized_sentence: "".';
+      ? `Active sentence glosses signed so far: [${existingGlosses.join(', ')}]. Synthesize the cumulative natural English sentence including any newly detected sign.`
+      : 'Sentence start: First sign of sentence. If a sign is being articulated, output new_gloss and synthesize the initial English translation.';
 
     const conversationPrompt = Array.isArray(conversationHistory) && conversationHistory.length > 0
       ? `Prior conversation sentences context: ${JSON.stringify(conversationHistory.slice(-3))}`
@@ -571,8 +574,8 @@ Return JSON strictly conforming to schema.`;
 
     // Prioritize ultra-fast low-latency models in turbo mode (<200ms latency)
     const modelCandidates = speedMode === 'turbo'
-      ? ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3.8-flash']
-      : ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+      ? ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-flash-latest']
+      : ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
 
     const availableCandidates = modelCandidates.filter(isModelAvailable);
     const modelName = availableCandidates[0] || (speedMode === 'turbo' ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash');
@@ -585,9 +588,11 @@ Return JSON strictly conforming to schema.`;
       config: {
         systemInstruction,
         temperature: 0.1,
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.MINIMAL,
-        },
+        ...(modelName.startsWith('gemini-3') ? {
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MINIMAL,
+          },
+        } : {}),
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -647,6 +652,20 @@ Return JSON strictly conforming to schema.`;
     if (cnnFeatures) {
       data.cnn_features = cnnFeatures;
     }
+
+    if (data.new_gloss && data.new_gloss !== 'NONE') {
+      const updatedGlosses = [...existingGlosses, data.new_gloss];
+      data.raw_gloss_sequence = updatedGlosses;
+      if (!data.synthesized_sentence || data.synthesized_sentence.trim() === '') {
+        data.synthesized_sentence = `${updatedGlosses.join(' ')}.`;
+      }
+    } else {
+      data.raw_gloss_sequence = existingGlosses;
+      if ((!data.synthesized_sentence || data.synthesized_sentence.trim() === '') && existingGlosses.length > 0) {
+        data.synthesized_sentence = `${existingGlosses.join(' ')}.`;
+      }
+    }
+
     return res.json(data);
   } catch (err: any) {
     const existingGlosses = req.body?.existingGlosses || [];
@@ -781,15 +800,18 @@ Active session user corrections: ${JSON.stringify(userCorrections)}
 ${conversationPrompt}
 Return JSON with { "raw_sequence_text": string, "grammar_corrected_sentence": string, "final_translation": string, "confidence": number }`;
 
+    const grammarModel = isModelAvailable('gemini-3.1-flash-lite') ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash';
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
+      model: grammarModel,
       contents: promptText,
       config: {
         systemInstruction,
         temperature: 0.1,
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.MINIMAL,
-        },
+        ...(grammarModel.startsWith('gemini-3') ? {
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MINIMAL,
+          },
+        } : {}),
         responseMimeType: 'application/json',
       },
     });

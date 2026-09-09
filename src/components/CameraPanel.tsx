@@ -33,6 +33,7 @@ interface CameraPanelProps {
   settings: CameraSettings;
   availableDevices: MediaDeviceInfo[];
   onStartCameraAndTranslation: () => void;
+  onStartSimulation?: () => void;
   onStopCameraAndTranslation: () => void;
   onToggleTranslation: () => void;
   onToggleMirror: () => void;
@@ -54,6 +55,7 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
   settings,
   availableDevices,
   onStartCameraAndTranslation,
+  onStartSimulation,
   onStopCameraAndTranslation,
   onToggleTranslation,
   onToggleMirror,
@@ -359,6 +361,16 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Try Again</span>
               </button>
+              {onStartSimulation && (
+                <button
+                  id="camera-start-sim-button"
+                  onClick={onStartSimulation}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Try Demo Simulator</span>
+                </button>
+              )}
               <button
                 id="camera-permission-guide-button"
                 onClick={onOpenPermissionGuide}
@@ -424,6 +436,16 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Retry Detection</span>
               </button>
+              {onStartSimulation && (
+                <button
+                  id="camera-unavailable-sim-button"
+                  onClick={onStartSimulation}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Use Demo Simulator</span>
+                </button>
+              )}
               <button
                 id="camera-unavailable-guide-button"
                 onClick={onOpenPermissionGuide}

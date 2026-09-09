@@ -29,6 +29,7 @@ import {
   Activity,
   Filter,
   Eye,
+  ExternalLink,
 } from 'lucide-react';
 import {
   ActiveSentence,
@@ -63,11 +64,13 @@ interface SentenceTranslationStudioProps {
   timeRemainingMs: number | null;
   timeWindowMs: number;
   onStartCamera: () => void;
+  onStartSimulation?: () => void;
   onStopCamera: () => void;
   onToggleTranslation: () => void;
   onClearSentence: () => void;
   onCompleteSentence: () => void;
-  onRemoveWord: (index: number) => void;
+  onRemoveWord: (idOrIndex: string | number) => void;
+  onAddWord?: (wordOrGloss: string) => void;
   onSpeakSentence: (text: string) => void;
   onChangeSpeedMode: (mode: SentenceSpeedMode) => void;
   currentSpeedMode: SentenceSpeedMode;
@@ -113,11 +116,13 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
   timeRemainingMs,
   timeWindowMs,
   onStartCamera,
+  onStartSimulation,
   onStopCamera,
   onToggleTranslation,
   onClearSentence,
   onCompleteSentence,
   onRemoveWord,
+  onAddWord,
   onSpeakSentence,
   onChangeSpeedMode,
   currentSpeedMode,
@@ -140,7 +145,17 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
     if (e) e.preventDefault();
     const trimmed = quickInputText.trim();
     if (!trimmed) return;
-    const glosses = trimmed.replace(/[.,!?;:]+$/, '').split(/\s+/).map((s) => s.toUpperCase());
+
+    // If single sign gloss or word, append to current sentence
+    const tokens = trimmed.replace(/[.,!?;:]+$/, '').split(/\s+/).filter(Boolean);
+    if (tokens.length === 1 && onAddWord) {
+      onAddWord(tokens[0]);
+      setQuickInputText('');
+      return;
+    }
+
+    // If multiple words or full sentence, synthesize and load
+    const glosses = tokens.map((s) => s.toUpperCase());
     const localResult = languageContextEngine.synthesizeGrammarSentence(
       glosses.map((g, i) => ({ id: `q-${i}`, word: g.toLowerCase(), gloss: g }))
     );
@@ -460,6 +475,16 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>Try Again</span>
                   </button>
+                  {onStartSimulation && (
+                    <button
+                      id="sentence-start-sim-btn"
+                      onClick={onStartSimulation}
+                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-md transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Try Demo Simulator (No Camera)</span>
+                    </button>
+                  )}
                   {onOpenPermissionGuide && (
                     <button
                       onClick={onOpenPermissionGuide}
@@ -468,6 +493,17 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
                       <HelpCircle className="w-3.5 h-3.5 text-purple-400" />
                       <span>Troubleshoot Camera</span>
                     </button>
+                  )}
+                  {typeof window !== 'undefined' && window.self !== window.top && (
+                    <a
+                      href={window.location.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Open in New Tab</span>
+                    </a>
                   )}
                 </div>
               </div>
@@ -485,13 +521,40 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
                       'No video input devices were found. Please connect an external webcam or verify your video drivers.'}
                   </p>
                 </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  <button
+                    id="sentence-retry-camera-hardware-btn"
+                    onClick={onStartCamera}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Retry Detection</span>
+                  </button>
+                  {onStartSimulation && (
+                    <button
+                      id="sentence-hardware-sim-btn"
+                      onClick={onStartSimulation}
+                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-md transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Use Demo Simulator</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Simulation Mode Indicator Pill if active */}
+            {cameraPermission === 'simulated' && (
+              <div className="absolute top-3 left-3 z-20 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs shadow-lg backdrop-blur-md">
+                <span className="h-2 w-2 rounded-full bg-purple-400 animate-ping"></span>
+                <span className="font-bold">Virtual ASL Simulator Active</span>
                 <button
-                  id="sentence-retry-camera-hardware-btn"
                   onClick={onStartCamera}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                  className="ml-2 px-2 py-0.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                  title="Connect physical camera"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Retry Detection</span>
+                  Switch to Webcam
                 </button>
               </div>
             )}
@@ -530,7 +593,7 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
             <div className="flex items-center gap-2 text-xs">
               <span className="text-slate-400 font-medium">Auto-Finish Pause:</span>
               <div className="flex items-center bg-slate-950 rounded-lg p-0.5 border border-slate-800">
-                {[800, 1200, 1800, 2500].map((ms) => (
+                {[1500, 2500, 4000, 6000].map((ms) => (
                   <button
                     key={ms}
                     onClick={() => onChangeSentenceWindow(ms)}
@@ -540,7 +603,7 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {ms === 800 ? '⚡ 0.8s' : `${(ms / 1000).toFixed(1)}s`}
+                    {ms === 1500 ? '⚡ 1.5s' : `${(ms / 1000).toFixed(1)}s`}
                   </button>
                 ))}
               </div>
@@ -781,7 +844,7 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
                         </span>
                       )}
                       <button
-                        onClick={() => onRemoveWord(index)}
+                        onClick={() => onRemoveWord(item.id || index)}
                         className="text-indigo-400 hover:text-rose-400 transition-colors ml-0.5 cursor-pointer"
                         title="Remove sign from sentence"
                       >
@@ -792,7 +855,34 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
                 </div>
               ) : (
                 <div className="p-3 rounded-xl bg-slate-950/40 border border-slate-800/60 text-xs text-slate-400 italic">
-                  No signs in current sequence yet.
+                  No signs in current sequence yet. Signs from camera or quick taps appear here.
+                </div>
+              )}
+
+              {/* Quick Sign Palette (tap to build sentences instantly) */}
+              {onAddWord && (
+                <div className="pt-2 border-t border-slate-800/50 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span className="font-semibold text-slate-400">Tap to add signs to sentence:</span>
+                    <span className="text-[10px] text-indigo-400">Instant syntax engine</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                    {[
+                      'HELLO', 'ME', 'YOU', 'WANT', 'WATER', 'FOOD', 'GO',
+                      'SCHOOL', 'TOMORROW', 'YESTERDAY', 'LIKE', 'COFFEE',
+                      'PLEASE', 'HELP', 'THANK-YOU', 'TIRED', 'WHERE', 'WHAT', 'DOCTOR'
+                    ].map((gloss) => (
+                      <button
+                        key={gloss}
+                        type="button"
+                        onClick={() => onAddWord(gloss)}
+                        className="px-2 py-1 rounded-md bg-slate-800/80 hover:bg-indigo-600 hover:text-white border border-slate-700/80 text-[11px] font-mono font-medium text-slate-300 transition-all cursor-pointer shadow-xs active:scale-95"
+                        title={`Add ${gloss} to sentence`}
+                      >
+                        +{gloss}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

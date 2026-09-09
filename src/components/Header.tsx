@@ -15,6 +15,7 @@ import {
   Brain,
   Award,
   MessageSquare,
+  Power,
 } from 'lucide-react';
 
 export type AppStudioSection = 'sentence' | 'vocabulary';
@@ -100,6 +101,26 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <span className="animate-spin h-2 w-2 border-2 border-amber-400 border-t-transparent rounded-full"></span>
             <span>Requesting Permission...</span>
+          </div>
+        );
+      case 'simulated':
+        return (
+          <div
+            id="status-badge-simulated"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-950/80 border border-purple-500/40 text-purple-300 text-xs font-medium backdrop-blur-sm shadow-sm"
+          >
+            <span className="h-2 w-2 rounded-full bg-purple-400 animate-pulse"></span>
+            <span>Demo Simulation Mode</span>
+            {onStopCamera && (
+              <button
+                id="header-stop-sim-button"
+                onClick={onStopCamera}
+                className="ml-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title="Stop Simulation"
+              >
+                <Power className="w-3 h-3" />
+              </button>
+            )}
           </div>
         );
       case 'denied':
