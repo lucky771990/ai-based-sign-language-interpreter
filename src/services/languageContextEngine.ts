@@ -11,6 +11,7 @@ export interface DisambiguationContext {
   topicHint?: string;
   userCorrections?: Record<string, string>;
   signLanguage?: SignLanguage;
+  conversationHistory?: string[];
 }
 
 export interface GrammarConversionResult {
@@ -26,6 +27,7 @@ export interface GrammarConversionResult {
 
 class LanguageContextEngine {
   private sessionCorrections: Map<string, SessionCorrection> = new Map();
+  private conversationHistory: string[] = [];
 
   // Common visually similar sign pairs and contextual keyword associations
   private similarSignDisambiguationRules: Record<
@@ -77,9 +79,54 @@ class LanguageContextEngine {
       contextKeywordsB: ['SUNDAY', 'PRAY', 'RELIGION', 'WORSHIP', 'BIBLE', 'CROSS', 'GOD'],
     },
     DOCTOR: {
-      counterpart: 'NURSE',
-      contextKeywordsA: ['HOSPITAL', 'MEDICINE', 'EXAM', 'SICK', 'SURGERY', 'CLINIC', 'PHYSICIAN'],
-      contextKeywordsB: ['CARE', 'INJECTION', 'HELP', 'BED', 'VITALS', 'ASSIST'],
+      counterpart: 'TEACHER',
+      contextKeywordsA: ['HOSPITAL', 'MEDICINE', 'EXAM', 'SICK', 'SURGERY', 'CLINIC', 'PHYSICIAN', 'HURT', 'PAIN', 'EMERGENCY', 'NURSE'],
+      contextKeywordsB: ['SCHOOL', 'CLASS', 'STUDENT', 'LEARN', 'TEACH', 'HOMEWORK', 'BOOK', 'STUDY', 'EDUCATION', 'COLLEGE'],
+    },
+    TEACHER: {
+      counterpart: 'DOCTOR',
+      contextKeywordsA: ['SCHOOL', 'CLASS', 'STUDENT', 'LEARN', 'TEACH', 'HOMEWORK', 'BOOK', 'STUDY', 'EDUCATION', 'COLLEGE'],
+      contextKeywordsB: ['HOSPITAL', 'MEDICINE', 'EXAM', 'SICK', 'SURGERY', 'CLINIC', 'PHYSICIAN', 'HURT', 'PAIN', 'EMERGENCY', 'NURSE'],
+    },
+    HOME: {
+      counterpart: 'HOSPITAL',
+      contextKeywordsA: ['BED', 'SLEEP', 'RELAX', 'FAMILY', 'DINNER', 'EAT', 'HOUSE', 'NIGHT', 'REST', 'MOM', 'DAD'],
+      contextKeywordsB: ['SICK', 'HURT', 'DOCTOR', 'EMERGENCY', 'PAIN', 'AMBULANCE', 'MEDICINE', 'INJURY', 'NURSE'],
+    },
+    HOSPITAL: {
+      counterpart: 'HOME',
+      contextKeywordsA: ['SICK', 'HURT', 'DOCTOR', 'EMERGENCY', 'PAIN', 'AMBULANCE', 'MEDICINE', 'INJURY', 'NURSE'],
+      contextKeywordsB: ['BED', 'SLEEP', 'RELAX', 'FAMILY', 'DINNER', 'EAT', 'HOUSE', 'NIGHT', 'REST', 'MOM', 'DAD'],
+    },
+    WATER: {
+      counterpart: 'WINE',
+      contextKeywordsA: ['THIRSTY', 'DRINK', 'GLASS', 'BOTTLE', 'HYDRATE', 'COLD', 'ICE'],
+      contextKeywordsB: ['DINNER', 'PARTY', 'ALCOHOL', 'CELEBRATE', 'GLASS', 'RED', 'WHITE'],
+    },
+    WINE: {
+      counterpart: 'WATER',
+      contextKeywordsA: ['DINNER', 'PARTY', 'ALCOHOL', 'CELEBRATE', 'GLASS', 'RED', 'WHITE'],
+      contextKeywordsB: ['THIRSTY', 'DRINK', 'GLASS', 'BOTTLE', 'HYDRATE', 'COLD', 'ICE'],
+    },
+    SUMMER: {
+      counterpart: 'DRY',
+      contextKeywordsA: ['HOT', 'SUN', 'BEACH', 'SEASON', 'WEATHER', 'VACATION'],
+      contextKeywordsB: ['THIRST', 'WATER', 'WIPE', 'TOWEL', 'RAIN', 'DESERT'],
+    },
+    DRY: {
+      counterpart: 'SUMMER',
+      contextKeywordsA: ['THIRST', 'WATER', 'WIPE', 'TOWEL', 'RAIN', 'DESERT'],
+      contextKeywordsB: ['HOT', 'SUN', 'BEACH', 'SEASON', 'WEATHER', 'VACATION'],
+    },
+    LIKE: {
+      counterpart: 'WHITE',
+      contextKeywordsA: ['WANT', 'LOVE', 'PREFER', 'FAVORITE', 'FEEL', 'ENJOY'],
+      contextKeywordsB: ['COLOR', 'SHIRT', 'SNOW', 'PAPER', 'BLACK', 'PAINT'],
+    },
+    WHITE: {
+      counterpart: 'LIKE',
+      contextKeywordsA: ['COLOR', 'SHIRT', 'SNOW', 'PAPER', 'BLACK', 'PAINT'],
+      contextKeywordsB: ['WANT', 'LOVE', 'PREFER', 'FAVORITE', 'FEEL', 'ENJOY'],
     },
     MOTHER: {
       counterpart: 'FATHER',
@@ -113,15 +160,34 @@ class LanguageContextEngine {
     },
     WHERE: {
       counterpart: 'WHAT',
-      contextKeywordsA: ['PLACE', 'LOCATION', 'GO', 'BATHROOM', 'STORE', 'ADDRESS', 'ROOM'],
-      contextKeywordsB: ['THING', 'NAME', 'DO', 'HAPPEN', 'MEAN', 'TIME', 'COLOR'],
+      contextKeywordsA: ['PLACE', 'LOCATION', 'GO', 'BATHROOM', 'STORE', 'ADDRESS', 'ROOM', 'MARKET', 'SCHOOL', 'HOSPITAL'],
+      contextKeywordsB: ['THING', 'NAME', 'DO', 'HAPPEN', 'MEAN', 'TIME', 'COLOR', 'FOOD'],
     },
     WHAT: {
       counterpart: 'WHERE',
-      contextKeywordsA: ['THING', 'NAME', 'DO', 'HAPPEN', 'MEAN', 'TIME', 'COLOR'],
-      contextKeywordsB: ['PLACE', 'LOCATION', 'GO', 'BATHROOM', 'STORE', 'ADDRESS', 'ROOM'],
+      contextKeywordsA: ['THING', 'NAME', 'DO', 'HAPPEN', 'MEAN', 'TIME', 'COLOR', 'FOOD'],
+      contextKeywordsB: ['PLACE', 'LOCATION', 'GO', 'BATHROOM', 'STORE', 'ADDRESS', 'ROOM', 'MARKET', 'SCHOOL', 'HOSPITAL'],
     },
   };
+
+  /**
+   * Conversational context history management
+   */
+  public addConversationHistory(sentence: string) {
+    if (!sentence || typeof sentence !== 'string' || sentence.trim() === '') return;
+    this.conversationHistory.push(sentence.trim());
+    if (this.conversationHistory.length > 10) {
+      this.conversationHistory.shift();
+    }
+  }
+
+  public getConversationHistory(): string[] {
+    return [...this.conversationHistory];
+  }
+
+  public clearConversationHistory() {
+    this.conversationHistory = [];
+  }
 
   /**
    * Register a user-provided correction during the active session
@@ -212,9 +278,19 @@ class LanguageContextEngine {
       for (const cand of allCandidates) {
         const rule = this.similarSignDisambiguationRules[cand];
         if (rule) {
+          const convoKeywords = [
+            ...(context.conversationHistory || []),
+            ...this.conversationHistory,
+          ]
+            .join(' ')
+            .toUpperCase()
+            .split(/[^A-Z0-9_-]+/)
+            .filter(Boolean);
+
           const surroundingGlosses = [
             ...context.previousSigns.map((s) => s.toUpperCase()),
             ...context.followingSigns.map((s) => s.toUpperCase()),
+            ...convoKeywords,
           ];
 
           let scoreA = 0;
@@ -379,11 +455,38 @@ class LanguageContextEngine {
       'HOW YOU': 'How are you',
       'NICE MEET YOU': 'Nice to meet you',
       'GOOD SEE YOU': 'Good to see you',
+      'ME SCHOOL TOMORROW GO': 'I will go to school tomorrow',
+      'TOMORROW SCHOOL ME GO': 'I will go to school tomorrow',
+      'TOMORROW ME SCHOOL GO': 'I will go to school tomorrow',
+      'I SCHOOL TOMORROW GO': 'I will go to school tomorrow',
+      'TOMORROW I SCHOOL GO': 'I will go to school tomorrow',
+      'TOMORROW I GO SCHOOL': 'I will go to school tomorrow',
+      'YOU FOOD WANT': 'Do you want food',
+      'YOU WANT FOOD': 'Do you want food',
+      'YOU WATER WANT': 'Do you want water',
+      'YOU WANT WATER': 'Do you want water',
+      'YOU LIKE TEA': 'Do you like tea',
+      'YOU LIKE COFFEE': 'Do you like coffee',
+      'YESTERDAY FRIEND MEET': 'I met my friend yesterday',
+      'ME YESTERDAY FRIEND MEET': 'I met my friend yesterday',
+      'I YESTERDAY FRIEND MEET': 'I met my friend yesterday',
+      'ME FRIEND YESTERDAY MEET': 'I met my friend yesterday',
+      'ME NOT LIKE TEA': "I don't like tea",
+      'I NOT LIKE TEA': "I don't like tea",
+      'ME NOT LIKE COFFEE': "I don't like coffee",
+      'I NOT LIKE COFFEE': "I don't like coffee",
+      'I GOING SCHOOL': 'I am going to school',
+      'ME GOING SCHOOL': 'I am going to school',
+      'YOU GO SCHOOL': 'Are you going to school',
+      'YOU GOING SCHOOL': 'Are you going to school',
+      'I HOSPITAL GO DOCTOR MEET': 'I am going to the hospital to meet the doctor',
+      'I TIRED WANT SLEEP': 'I am tired and want to sleep',
       'I TOMORROW MARKET GO': 'I will go to the market tomorrow',
       'TOMORROW MARKET I GO': 'I will go to the market tomorrow',
       'TOMORROW I MARKET GO': 'I will go to the market tomorrow',
       'TOMORROW I GO MARKET': 'I will go to the market tomorrow',
       'YESTERDAY MARKET I GO': 'I went to the market yesterday',
+      'I YESTERDAY MARKET GO': 'I went to the market yesterday',
       'WHERE YOU GO': 'Where are you going',
       'YOU GO WHERE': 'Where are you going',
       'ME TIRED': 'I am tired',
@@ -409,11 +512,15 @@ class LanguageContextEngine {
       return `${idiomaticPhrases[joined]}${punctuation}`;
     }
 
-    // 2. Rule-based linguistic reconstruction:
+    // 2. Systematic Negation Preservation Check
+    const negationWords = ['NOT', 'NO', 'DON-T', "DON'T", 'DONT', 'NEVER', "CAN'T", 'CANT', "WON'T", 'WONT'];
+    const hasNegation = upperGlosses.some((g) => negationWords.includes(g));
+
+    // 3. Rule-based linguistic reconstruction:
     // Extract Time markers, Subject, Verb, Object, Modifiers
     const timeMarkers = ['TOMORROW', 'YESTERDAY', 'TODAY', 'NOW', 'SOON', 'LATER', 'MORNING', 'NIGHT'];
     const subjects = ['I', 'ME', 'YOU', 'HE', 'SHE', 'IT', 'WE', 'THEY', 'FRIEND', 'FAMILY', 'TEACHER', 'DOCTOR'];
-    const verbs = ['GO', 'WANT', 'NEED', 'LIKE', 'HAVE', 'SEE', 'EAT', 'DRINK', 'MAKE', 'LEARN', 'HELP', 'KNOW', 'BUY'];
+    const verbs = ['GO', 'GOING', 'WANT', 'NEED', 'LIKE', 'HAVE', 'SEE', 'EAT', 'DRINK', 'MAKE', 'LEARN', 'HELP', 'KNOW', 'BUY', 'MEET', 'SLEEP'];
 
     let timeWord: string | null = null;
     let subjectWord: string | null = null;
@@ -428,8 +535,22 @@ class LanguageContextEngine {
         subjectWord = g === 'ME' ? 'I' : g;
       } else if (!verbWord && verbs.includes(g)) {
         verbWord = g;
-      } else {
+      } else if (!negationWords.includes(g)) {
         remainingWords.push(originalWords[i] || g.toLowerCase());
+      }
+    }
+
+    // If negation is present, faithfully reconstruct without inverting polarity
+    if (hasNegation && verbWord) {
+      const subj = subjectWord || 'I';
+      const obj = remainingWords.length > 0 ? ` ${remainingWords.join(' ')}` : '';
+      if (verbWord === 'LIKE' || verbWord === 'WANT' || verbWord === 'KNOW' || verbWord === 'UNDERSTAND') {
+        const aux = (subj === 'HE' || subj === 'SHE' || subj === 'IT') ? "doesn't" : "don't";
+        return `${subj} ${aux} ${verbWord.toLowerCase()}${obj}${punctuation}`;
+      } else if (verbWord === 'GO') {
+        return `${subj} will not go to the${obj}${punctuation}`;
+      } else {
+        return `${subj} did not ${verbWord.toLowerCase()}${obj}${punctuation}`;
       }
     }
 
@@ -437,18 +558,37 @@ class LanguageContextEngine {
     if (timeWord && subjectWord && verbWord) {
       let verbForm = verbWord.toLowerCase();
       let prep = '';
-      if (verbWord === 'GO') {
-        prep = 'to the ';
+      if (verbWord === 'GO' || verbWord === 'GOING') {
+        prep = 'to ';
+        if (remainingWords.length > 0 && !remainingWords[0].startsWith('the') && !remainingWords[0].startsWith('school')) {
+          prep = 'to the ';
+        }
       }
 
       if (timeWord === 'TOMORROW' || timeWord === 'SOON' || timeWord === 'LATER') {
         const obj = remainingWords.length > 0 ? `${prep}${remainingWords.join(' ')}` : '';
-        return `I will ${verbForm} ${obj} ${timeWord.toLowerCase()}${punctuation}`.replace(/\s+/g, ' ').trim();
+        return `${subjectWord} will ${verbForm === 'going' ? 'go' : verbForm} ${obj} ${timeWord.toLowerCase()}${punctuation}`.replace(/\s+/g, ' ').trim();
       } else if (timeWord === 'YESTERDAY') {
-        const pastVerb = verbWord === 'GO' ? 'went' : `${verbForm}ed`;
+        const pastVerb = verbWord === 'GO' || verbWord === 'GOING' ? 'went' : verbWord === 'MEET' ? 'met' : `${verbForm}ed`;
         const obj = remainingWords.length > 0 ? `${prep}${remainingWords.join(' ')}` : '';
-        return `I ${pastVerb} ${obj} yesterday${punctuation}`.replace(/\s+/g, ' ').trim();
+        return `${subjectWord} ${pastVerb} ${obj} yesterday${punctuation}`.replace(/\s+/g, ' ').trim();
       }
+    }
+
+    // Questions without Time markers (e.g. YOU FOOD WANT -> Do you want food?)
+    if (subjectWord === 'YOU' && verbWord && (punctuation === '?' || this.detectIsQuestion(upperGlosses))) {
+      const obj = remainingWords.length > 0 ? ` ${remainingWords.join(' ')}` : '';
+      if (verbWord === 'GO' || verbWord === 'GOING') {
+        return `Are you going to${obj}?`;
+      }
+      return `Do you ${verbWord.toLowerCase()}${obj}?`;
+    }
+
+    // Present continuous restoration (e.g. I GOING SCHOOL -> I am going to school.)
+    if (subjectWord && verbWord === 'GOING') {
+      const obj = remainingWords.length > 0 ? ` to ${remainingWords.join(' ')}` : '';
+      const aux = subjectWord === 'I' ? 'am' : subjectWord === 'YOU' ? 'are' : 'is';
+      return `${subjectWord} ${aux} going${obj}${punctuation}`;
     }
 
     // 3. Fallback: Assemble preserved words cleanly, capitalizing first letter and honoring punctuation

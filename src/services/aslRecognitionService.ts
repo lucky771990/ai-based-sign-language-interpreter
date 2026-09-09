@@ -187,6 +187,7 @@ class ASLRecognitionService {
 
       let response: Response;
       try {
+        const convoHistory = languageContextEngine.getConversationHistory();
         response = await fetch(endpoint, {
           method: 'POST',
           headers: {
@@ -198,6 +199,8 @@ class ASLRecognitionService {
             mode,
             signLanguage,
             telemetry,
+            conversationHistory: convoHistory,
+            targetLanguage: 'English',
           }),
         });
       } catch (networkError: any) {
@@ -283,6 +286,7 @@ class ASLRecognitionService {
         previousSigns: recentHistory,
         followingSigns: [],
         signLanguage,
+        conversationHistory: languageContextEngine.getConversationHistory(),
       });
 
       const isReliable = !resolved.isUncertain && resolved.confidence >= 0.60;
@@ -345,7 +349,9 @@ class ASLRecognitionService {
     signLanguage: SignLanguage = 'ASL',
     telemetry?: HandFeatureTelemetry,
     speedMode: SentenceSpeedMode = 'turbo',
-    cnnFeatures?: CNNFeatureTensor
+    cnnFeatures?: CNNFeatureTensor,
+    conversationHistory?: string[],
+    targetLanguage: string = 'English'
   ): Promise<SentenceStreamResult> {
     if (frames.length === 0) {
       return {
@@ -364,6 +370,7 @@ class ASLRecognitionService {
     try {
       const baseUrl = getApiBaseUrl();
       const endpoint = `${baseUrl}/api/translate-sentence`;
+      const convo = conversationHistory || languageContextEngine.getConversationHistory();
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -375,6 +382,8 @@ class ASLRecognitionService {
           telemetry,
           speedMode,
           cnnFeatures,
+          conversationHistory: convo,
+          targetLanguage,
         }),
       });
 

@@ -132,6 +132,8 @@ const handleTranslationRequest = async (req: express.Request, res: express.Respo
       mode = 'continuous',
       signLanguage = 'ASL',
       telemetry,
+      conversationHistory = [],
+      targetLanguage = 'English',
     } = req.body;
 
     if (!frames || !Array.isArray(frames) || frames.length === 0) {
@@ -174,44 +176,67 @@ const handleTranslationRequest = async (req: express.Request, res: express.Respo
       ? `Recent conversational signs context: ${JSON.stringify(recentHistory.slice(-4))}`
       : 'No prior context.';
 
+    const conversationPrompt = Array.isArray(conversationHistory) && conversationHistory.length > 0
+      ? `Prior conversation sentences context: ${JSON.stringify(conversationHistory.slice(-3))}`
+      : '';
+
     const telemetryInfo = telemetry
       ? `Vision telemetry: Dominant hand: ${telemetry.dominantHand || 'unknown'}, Two-handed: ${telemetry.isTwoHandedSign ? 'YES' : 'NO'}, Movement: ${telemetry.movementDirection || 'stationary'}, Velocity: ${telemetry.velocity || 0}, Segmentation state: ${telemetry.segmentationState || 'UNKNOWN'}.`
       : '';
 
-    const systemInstruction = `You are a certified, master-level sign language vision interpreter specializing in ${signLanguage} (${
+    const systemInstruction = `You are an advanced, real-time Sign Language → Text interpreter specializing in ${signLanguage} (${
       signLanguage === 'BSL'
         ? 'British Sign Language, recognizing two-handed manual alphabet and UK grammar conventions'
         : signLanguage === 'ISL'
         ? 'International/Indian Sign Language'
         : 'American Sign Language'
-    }).
+    }) translating into ${targetLanguage}.
 
-CORE ACCURACY & DISAMBIGUATION RULES:
-1. FIVE PARAMETERS OF SIGN IDENTIFICATION:
-   - Handshape: Differentiate exact finger configurations (e.g., A vs S vs T vs M; 1 vs D; B vs 4; V vs K; open-5 vs claw-5).
+PRIMARY OPERATING DIRECTIVE:
+Think in terms of: VIDEO → MOVEMENT → SIGN → WORD → CONTEXT → MEANING → SENTENCE.
+
+1. CORE OBJECTIVE & IMPERFECT SIGN HANDLING:
+   - Interpret the user's INTENDED MEANING rather than performing rigid one-to-one sign classification.
+   - The signer does NOT need to perform every sign perfectly. Real-world signing includes:
+     * Correct signs, slightly incorrect signs, incomplete signs, similar-looking signs
+     * Different signing speeds, small hand-position errors, finger occlusion, temporary tracking failures
+     * Variations between signers, signs performed at different angles or distances from the camera
+     * Motion blur, low lighting, background clutter, hands leaving frame briefly
+   - Do NOT immediately fail or output "unknown" when a sign is slightly incorrect. Use surrounding context to infer what the user is communicating.
+   - Never invent information that has no reasonable connection to the input.
+
+2. FIVE PARAMETERS OF SIGN IDENTIFICATION:
+   - Handshape: Differentiate finger configurations (A vs S vs T vs M; 1 vs D; B vs 4; V vs K; open-5 vs claw-5).
    - Location: Identify landmark contact or proximity:
-     * Chin / Mouth zone: MOTHER (thumb on chin), WATER (W on chin), THANK-YOU (chin forward), EAT/FOOD (flattened O to mouth).
-     * Forehead / Brow zone: FATHER (thumb on forehead), KNOW (fingertips to temple), FORGET (swipe across forehead).
-     * Chest / Torso zone: PLEASE (open palm clockwise circle on chest), SORRY (A-fist circle on chest), FINE (open-5 thumb on chest), LIKE (open-8 pulling from chest), TIRED (bent hands drooping at chest).
-     * Neutral space: WANT (claw hands pulling inward), NEED/MUST (X-finger hooked down), MEET (index fingers coming together), HELP (thumbs up on flat palm lifting).
-   - Movement: Note stroke direction, repetition, and velocity. Single firm stroke vs double-tap vs circular rub.
-   - Palm Orientation: Inward toward signer, forward toward camera, upward, or downward.
-   - Non-Manual Markers (NMM):
-     * Eyebrows furrowed + slight head forward: WH-questions (WHO, WHAT, WHERE, WHEN, WHY, HOW).
-     * Eyebrows raised + head forward: Yes/No questions or conditional topic.
-     * Head shake: Negation (NOT, DON'T-WANT, CAN'T).
-     * Head nod: Affirmation (YES, WILL, UNDERSTAND).
+     * Chin / Mouth: MOTHER (thumb on chin), WATER (W on chin), THANK-YOU (chin forward), EAT/FOOD (flattened O to mouth).
+     * Forehead: FATHER (thumb on forehead), KNOW (fingertips to temple), FORGET (swipe across forehead).
+     * Chest: PLEASE (open palm circle), SORRY (A-fist circle), FINE (open-5 thumb on chest), LIKE (pulling from chest), TIRED (bent hands drooping at chest).
+     * Neutral space: WANT (claw hands pulling inward), NEED (X-hook), MEET (index fingers touching), HELP (thumbs up on flat palm lifting).
+   - Movement: Single firm stroke vs double-tap vs continuous circle vs hold.
+   - Palm Orientation: Inward, forward, upward, downward.
+   - Non-Manual Markers (NMM): Eyebrows furrowed (WH-questions), eyebrows raised (Yes/No questions), head shake (negation), head nod (affirmation).
 
-2. ANTI-HALLUCINATION & HONEST UNCERTAINTY:
-   - VISUAL EVIDENCE ALWAYS PREVAILS. Never invent words or signs merely to form a complete English phrase.
-   - If signer is resting or hands are out of signing frame, output recognized_sign: "NONE", confidence: 0, is_reliable: false.
-   - If movement is ambiguous, provide plausible alternative glosses and set is_reliable: false.
-   - For high confidence (>= 0.75), return the exact standard sign gloss and natural English translation.`;
+3. CONTEXT-AWARE DISAMBIGUATION:
+   - Use short-term conversation context to disambiguate visually similar signs:
+     * Hospital / medical context -> DOCTOR or MEDICINE over TEACHER or CANDY.
+     * Food / dining context -> HOME or EAT over HOSPITAL or TIRED.
+     * Financial / work context -> BANK over BENCH.
+     * Morning / beverage context -> COFFEE or TEA.
 
-    const promptText = `Analyze sequential video frame(s) for ${signLanguage}. Mode: ${mode}.
+4. TEMPORAL DEDUPLICATION & REPETITION HANDLING:
+   - ONE sign performed across multiple video frames must yield ONE word, NOT repeated words ("hello hello hello").
+   - If signer is resting or hands are out of frame, output recognized_sign: "NONE", confidence: 0, is_reliable: false.
+
+5. NATURAL LANGUAGE OUTPUT:
+   - Output natural human language in ${targetLanguage}.
+   - Never output raw gesture labels ("+ + +"), technical sign codes, or confidence scores in english_translation.
+   - Preserve meaning strictly: NEVER invert negation (e.g. "ME NOT LIKE TEA" -> "I don't like tea.").`;
+
+    const promptText = `Analyze sequential video frame(s) for ${signLanguage}. Mode: ${mode}. Target Language: ${targetLanguage}.
 ${telemetryInfo}
 ${contextPrompt}
-Return the verified sign recognition and candidate alternatives.`;
+${conversationPrompt}
+Return verified sign recognition, natural translation, and candidate alternatives.`;
 
     // In single_sign or isolated mode, prioritize gemini-3.8-flash for maximum visual accuracy
     const allModels = mode === 'single_sign' || mode === 'isolated'
@@ -410,6 +435,8 @@ app.post('/api/translate-sentence', async (req, res) => {
       telemetry,
       speedMode = 'turbo',
       cnnFeatures,
+      conversationHistory = [],
+      targetLanguage = 'English',
     } = req.body;
 
     if (!frames || !Array.isArray(frames) || frames.length === 0) {
@@ -471,55 +498,72 @@ app.post('/api/translate-sentence', async (req, res) => {
       ? `Active sentence glosses signed so far: [${existingGlosses.join(', ')}]`
       : 'Sentence start: No signs performed yet. If no new sign is actively being formed, output new_gloss: "NONE" and synthesized_sentence: "".';
 
-    const systemInstruction = `You are a certified, master-level sign language interpreter specializing in ${signLanguage} continuous sentence translation with real-time CNN feature augmentation.
-Your task is to analyze sequential video keyframe(s) and convolutional feature telemetry to accurately transcribe and update the ongoing sentence.
+    const conversationPrompt = Array.isArray(conversationHistory) && conversationHistory.length > 0
+      ? `Prior conversation sentences context: ${JSON.stringify(conversationHistory.slice(-3))}`
+      : '';
 
-CRITICAL ANTI-REPETITION & ANTI-HALLUCINATION RULES:
-1. NO REPETITION OF RECENT GLOSSES:
+    const systemInstruction = `You are an advanced, real-time Sign Language → Text interpreter specializing in ${signLanguage} continuous sentence translation with real-time CNN feature augmentation, translating into natural ${targetLanguage}.
+
+PRIMARY OPERATING DIRECTIVE:
+Think in terms of: VIDEO → MOVEMENT → SIGN → WORD → CONTEXT → MEANING → SENTENCE.
+
+1. CORE OBJECTIVE & IMPERFECT SIGN HANDLING:
+   - Interpret user's INTENDED MEANING rather than rigid one-to-one sign classification.
+   - Real-world input contains:
+     * Correct signs, slightly incorrect signs, incomplete signs, similar-looking signs
+     * Varying signing speeds, small hand-position errors, finger occlusion, temporary tracking failures
+     * Variations between signers, signs performed at different angles/distances from camera
+     * Motion blur, low lighting, background clutter, hands leaving frame briefly
+   - Do NOT immediately fail or output "unknown" when a sign is slightly imperfect.
+   - Use surrounding context to determine what the user is most likely communicating (e.g. "I go mark..." -> "market").
+   - Never invent information that has no reasonable connection to the input.
+
+2. TEMPORAL DEDUPLICATION & REPETITION HANDLING:
+   - Track signs across video frames (Start, Middle/Apex, End, Transition, Pauses).
+   - ONE sign performed across 20 frames MUST produce ONE word, NOT repeated words ("hello hello hello...").
    - Inspect existingGlosses. If the current frame shows the same sign as the last item in existingGlosses, the signer is merely holding or finishing that sign. You MUST output new_gloss: "NONE", is_holding_previous: true, and cadence_state: "hold".
-   - NEVER emit the same sign twice consecutively unless the signer clearly retracted their hands to neutral rest and articulated a completely separate second stroke.
-2. NO HALLUCINATING ON REST OR IDLE:
+   - Only confirm a repeated word if the signer clearly retracted hands to neutral rest and articulated a distinct second stroke.
    - If hands are resting below the chest, stationary, adjusting the camera, or in neutral transition, output new_gloss: "NONE" and cadence_state: "rest".
-   - CRITICAL: If existingGlosses is empty AND new_gloss is "NONE", synthesized_sentence MUST BE "" (empty string). NEVER invent greetings or sentences when no signs are performed!
-3. STRICT VISUAL ARTICULATION & ACCURACY:
-   - Only emit a new_gloss when you clearly observe the hands executing a recognized ${signLanguage} sign at its stroke apex.
-   - Core sign vocabulary reference:
-     * HELLO / HI: Open B palm saluting outward from temple or forehead.
-     * THANK-YOU: Open flat palm touching chin/lips and extending outward toward the camera.
-     * PLEASE: Open flat palm rubbing clockwise in a circle over the chest.
-     * SORRY: Closed A-fist rubbing in a circle over the chest.
-     * HELP: Thumbs-up fist resting on flat palm of other hand, lifted upward.
-     * YOU: Index finger pointing directly forward toward the camera.
-     * ME / I: Index finger pointing to own chest.
-     * MY / MINE: Flat open hand placed on own chest.
-     * WHAT: Both hands palms up shaking gently side to side, or index finger slicing down non-dominant palm.
-     * WHERE: Index finger upright wagging side-to-side.
-     * HOW: Both curved hands with backs touching, rolling forward.
-     * NAME: H-fingers of both hands tapping across each other perpendicularly twice.
-     * NICE: Flat dominant hand sliding smoothly forward across flat non-dominant palm.
-     * MEET: Both index fingers upright, brought together face-to-face like two people meeting.
-     * WANT: Both claw hands pulling toward body with palms facing upward.
-     * LIKE: Middle finger and thumb pulling outward from chest while closing together.
-     * GOOD: Flat hand from chin moving down into flat non-dominant palm.
-     * COFFEE: Two fists stacked, top fist rotating in a grinding motion.
-     * WATER: W-handshape (index, middle, ring fingers up) tapping chin twice.
-     * YES: S-fist nodding like a head.
-     * NO: Index and middle fingers closing down onto thumb like a bird beak.
-4. ACCURATE GRAMMAR SYNTHESIS:
-   - Synthesize the accumulated gloss chain (existingGlosses plus new_gloss if not NONE) into fluent, natural English.
-   - Example gloss mappings:
-     * [NICE, MEET, YOU] -> "Nice to meet you."
-     * [NAME, YOU, WHAT] -> "What is your name?"
-     * [HOW, YOU] -> "How are you?"
-     * [I, WANT, COFFEE] -> "I want coffee."
-     * [I, WANT, HELP, YOU] -> "I want to help you."
-     * [THANK-YOU] -> "Thank you."
-     * [PLEASE, HELP, ME] -> "Please help me."
-   - If eyebrows are raised/furrowed with head tilt, format with terminal '?'.
-   - Do NOT append prior unrelated sentences or repeat sentences.`;
+   - CRITICAL: If existingGlosses is empty AND new_gloss is "NONE", synthesized_sentence MUST BE "" (empty string). Never invent greetings or sentences when no signs are performed.
 
-    const promptText = `Analyze frame(s) for ${signLanguage} sentence translation.
+3. CONTEXT-AWARE CORRECTION & AMBIGUITY RESOLUTION:
+   - Maintain short-term conversational context to disambiguate visually similar signs:
+     * Hospital / medical context -> DOCTOR or MEDICINE over TEACHER or CANDY.
+     * Dining / food context -> HOME or EAT over HOSPITAL or TIRED.
+     * Work / finance context -> BANK over BENCH.
+     * Beverage context -> COFFEE over TEA.
+
+4. SENTENCE FORMATION & GRAMMATICAL RECONSTRUCTION:
+   - Continuously combine recognized words into a coherent, grammatically correct, natural sentence in ${targetLanguage}.
+   - Automatically restore implied grammatical particles, auxiliary verbs, and prepositions when omitted:
+     * "ME SCHOOL TOMORROW GO" -> "I will go to school tomorrow."
+     * "YOU FOOD WANT" -> "Do you want food?"
+     * "YESTERDAY FRIEND MEET" -> "I met my friend yesterday."
+     * "ME NOT LIKE TEA" -> "I don't like tea."
+     * "I YESTERDAY MARKET GO" -> "I went to the market yesterday."
+     * "I GOING SCHOOL" -> "I am going to school."
+     * "YOU GO SCHOOL" -> "Are you going to school?"
+     * "NAME YOU WHAT" -> "What is your name?"
+     * "HOW YOU" -> "How are you?"
+     * "NICE MEET YOU" -> "Nice to meet you."
+     * "PLEASE HELP ME" -> "Please help me."
+     * "THANK-YOU" -> "Thank you."
+
+5. STRICT MEANING PRESERVATION:
+   - Never alter the user's intended meaning.
+   - Negative statements MUST stay negative ("ME NOT LIKE TEA" -> "I don't like tea.", NEVER "I love tea.").
+
+6. REAL-TIME INTERFACE OUTPUT:
+   - Output ONLY the current interpreted text in synthesized_sentence.
+   - Do NOT include raw gesture labels ("+ + +"), technical sign codes, or confidence scores in the sentence.
+   - Refine the sentence incrementally without erratic jumps.
+
+7. PUNCTUATION:
+   - Add proper terminal punctuation ('.' for statements, '?' for questions, '!' for emergencies/exclamations).`;
+
+    const promptText = `Analyze frame(s) for ${signLanguage} sentence translation into ${targetLanguage}.
 ${existingContext}
+${conversationPrompt}
 ${telemetryPrompt}
 ${cnnPrompt}
 Speed mode: ${speedMode}.
@@ -622,7 +666,14 @@ Return JSON strictly conforming to schema.`;
 // Grammar Synthesis & Disambiguation Endpoint
 app.post('/api/grammar-synthesize', async (req, res) => {
   try {
-    const { signs, language = 'ASL', userCorrections = {} } = req.body;
+    const {
+      signs,
+      language = 'ASL',
+      userCorrections = {},
+      conversationHistory = [],
+      targetLanguage = 'English',
+    } = req.body;
+
     if (!signs || !Array.isArray(signs) || signs.length === 0) {
       return res.json({
         raw_sequence: [],
@@ -648,13 +699,29 @@ app.post('/api/grammar-synthesize', async (req, res) => {
       });
     }
 
-    const systemInstruction = `You are a linguist specializing in ${language} syntax conversion to natural English.
-CRITICAL RULE: Never invent new facts or add unexpressed information. Preserve the speaker's original meaning.
-Translate the sign gloss sequence (Topic-Comment/Time-First order) into natural English with proper tense and punctuation (?, ., !).`;
+    const conversationPrompt = Array.isArray(conversationHistory) && conversationHistory.length > 0
+      ? `Prior conversation sentences context: ${JSON.stringify(conversationHistory.slice(-3))}`
+      : '';
 
-    const promptText = `Convert this ${language} sign sequence to natural English:
+    const systemInstruction = `You are an expert sign language linguist specializing in ${language} syntax conversion into natural, grammatically correct ${targetLanguage}.
+CORE CONVERSION RULES:
+1. Reconstruct sign language order (Topic-Comment, Time-First) into natural English:
+   - "ME SCHOOL TOMORROW GO" -> "I will go to school tomorrow."
+   - "YOU FOOD WANT" -> "Do you want food?"
+   - "YESTERDAY FRIEND MEET" -> "I met my friend yesterday."
+   - "ME NOT LIKE TEA" -> "I don't like tea."
+   - "I YESTERDAY MARKET GO" -> "I went to the market yesterday."
+   - "I GOING SCHOOL" -> "I am going to school."
+   - "YOU GO SCHOOL" -> "Are you going to school?"
+2. Supply implied grammatical words (articles, auxiliary verbs, prepositions) naturally.
+3. NEVER alter the speaker's intended meaning. Negative statements MUST stay negative.
+4. Output ONLY the natural translated text in final_translation.
+5. Use proper terminal punctuation (., ?, !).`;
+
+    const promptText = `Convert this ${language} sign sequence into natural ${targetLanguage}:
 Glosses: ${JSON.stringify(signs)}
 Active session user corrections: ${JSON.stringify(userCorrections)}
+${conversationPrompt}
 Return JSON with { "raw_sequence_text": string, "grammar_corrected_sentence": string, "final_translation": string, "confidence": number }`;
 
     const response = await ai.models.generateContent({

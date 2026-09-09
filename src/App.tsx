@@ -941,6 +941,9 @@ export default function App() {
     setActiveSentence((prev) => {
       if (prev.words.length === 0) return prev;
       const completeSentence = assembleSentence(prev.words.map((w) => w.word), true);
+      if (completeSentence) {
+        languageContextEngine.addConversationHistory(completeSentence);
+      }
       if (prev.words.length >= 2) {
         const now = new Date();
         const formattedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
