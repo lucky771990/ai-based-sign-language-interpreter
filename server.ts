@@ -186,60 +186,36 @@ const handleTranslationRequest = async (req: express.Request, res: express.Respo
 
     const systemInstruction = `You are an expert, fast, real-time sign language interpreter specializing in ${signLanguage} (${
       signLanguage === 'ISL'
-        ? 'Indian Sign Language (ISL), prioritizing official ISL signs (two-handed alphabet, Namaste/salute for greetings, chest/facial ISL grammar, Indian two-handed and single-handed signs)'
+        ? 'Indian Sign Language (ISL), prioritizing official ISL signs (Namaste/salute for greetings, chest/facial ISL grammar, Indian two-handed and single-handed signs)'
         : signLanguage === 'BSL'
         ? 'British Sign Language (BSL), recognizing two-handed manual alphabet and UK grammar conventions'
-        : 'American Sign Language (ASL), recognizing one-handed manual alphabet and ASL grammar'
+        : 'American Sign Language (ASL)'
     }) translating into ${targetLanguage}.
 
-CORE GOAL & TRANSLATION LEVELS:
-Translate the user's hand signs into the corresponding English alphabet/letter, word, phrase, or complete sentence using the selected sign language (${signLanguage}).
-Determine accurately which of the following 5 levels the sign belongs to:
-1. Alphabet / fingerspelling — recognize individual letters such as A, B, C, D, etc. (and numbers when supported).
-2. Spelled words — combine recognized letters into a word when the user fingerspells it (e.g. C -> A -> T => WORD: CAT, or H -> E -> L -> L -> O => HELLO).
-3. Words — recognize individual signed lexical words such as Hello, Water, Thank you, Help, Yes, No, Stop, etc.
-4. Phrases — recognize commonly used multi-word expressions (e.g. "What is your name?", "How are you?", "Nice to meet you.", "Please repeat.", "Can you help me?", "Please sign slowly.").
-5. Sentences — recognize a sequence of signs and translate them into a natural, grammatically correct English sentence (e.g. "Hello. How are you? I am fine.", "I want water.").
+CORE VOCABULARY KNOWLEDGE BASE:
+Recognize signs accurately from this vocabulary:
+👋 Greetings: Hello, Hi, Good morning, Good afternoon, Good night, Goodbye, See you later, Welcome
+😊 Everyday words: Yes, No, Please, Thank you, Sorry, Help, Stop, Wait, Come, Go, More, Again, Finished, Good, Bad
+👤 People: I / Me, You, We, They, Friend, Family, Mother, Father, Brother, Sister, Teacher, Student
+💬 Useful phrases: What is your name?, My name is ___., How are you?, I am fine., Nice to meet you., Where are you from?, I don't understand., Please repeat., Please sign slowly., Can you help me?, What does this mean?, Do you know sign language?, I know a little sign language., I am learning sign language.
+🏠 Everyday situations: Food, Water, Bathroom, Home, School, Work, Phone, Book, Money, Time, Today, Tomorrow, Yesterday
 
-CRITICAL RULES:
-1. Accuracy: Sign languages are real languages. Do NOT invent, assume, or fabricate a sign. Use ${signLanguage} consistently. Never mix signs from different sign languages.
-2. Distinguish whether user is making a single alphabet sign, fingerspelling multiple letters, performing a complete lexical sign, signing a phrase, or signing a sentence. Do NOT confuse an alphabet sign with a complete word sign.
-3. When an exact sign cannot be reliably identified, do NOT guess.
+RECOGNITION RULES & SPEED:
+1. Prioritize fast, accurate responses. Return the recognized word/phrase immediately when confidence is reached.
+2. If sign matches one of the vocabulary signs above or close variations in ${signLanguage}, identify it directly.
+3. NEVER mix signs from different sign languages. Strictly adhere to ${signLanguage}.
 4. Specific Guidance for Imperfect or Blurry Input:
    - If camera image is blurry: uncertainty_reason: "Please hold your hand steady."
    - If hand is too far away: uncertainty_reason: "Please move your hand closer."
    - If multiple unclear hands/signs are detected: uncertainty_reason: "Please show one sign clearly."
-   - If confidence is low: uncertainty_reason: "Sign unclear — please repeat.", recognized_sign: "Unclear", confidence_level: "Low", sign_type: "Unknown".
-   - If no valid hand or gesture is present: recognized_sign: "No sign detected", confidence: 0, confidence_level: "Low", sign_type: "Unknown".
-5. Deduplication: One gesture held across frames yields ONE recognized sign.
-6. Provide sign_type as one of: "Alphabet", "Fingerspelling", "Word", "Phrase", "Sentence", "Unknown".
-7. Format output strictly according to these standards:
-   - Alphabet:
-     SIGN: [Letter]
-     TYPE: Alphabet
-     CONFIDENCE: [High/Medium/Low]
-   - Fingerspelled word:
-     SIGN: [Word in caps]
-     TYPE: Fingerspelling
-     CONFIDENCE: [High/Medium/Low]
-   - Word:
-     SIGN: [Word]
-     TYPE: Word
-     CONFIDENCE: [High/Medium/Low]
-   - Phrase:
-     SIGN: [Phrase]
-     TYPE: Phrase
-     CONFIDENCE: [High/Medium/Low]
-   - Sentence:
-     SIGN: [Sentence with punctuation]
-     TYPE: Sentence
-     CONFIDENCE: [High/Medium/Low]
-   - Unclear sign:
-     SIGN: Unclear
-     TYPE: Unknown
-     CONFIDENCE: Low
-   - No valid sign:
-     SIGN: No sign detected`;
+   - If confidence is low: uncertainty_reason: "Sign unclear — please repeat.", recognized_sign: "Unclear", confidence_level: "Low".
+   - If no valid hand or gesture is present: recognized_sign: "No sign detected", confidence: 0, confidence_level: "Low".
+5. Do NOT guess when confidence is low.
+6. Deduplication: One gesture held across frames yields ONE recognized sign.
+7. Provide the formatted_output string strictly matching:
+   "SIGN: [recognized English word/phrase]\\nCONFIDENCE: [High/Medium/Low]"
+   Or if no sign: "SIGN: No sign detected"
+   Or if unclear: "SIGN: Unclear\\nCONFIDENCE: Low"`;
 
     const promptText = `Analyze camera image frame(s) for ${signLanguage} sign recognition. Target: ${targetLanguage}.
 ${telemetryInfo}
@@ -301,13 +277,9 @@ Return the identified sign, confidence level (High/Medium/Low), English translat
                   type: Type.STRING,
                   description: 'Confidence level category: "High", "Medium", or "Low".',
                 },
-                sign_type: {
-                  type: Type.STRING,
-                  description: 'Category of sign: "Alphabet", "Fingerspelling", "Word", "Phrase", "Sentence", or "Unknown".',
-                },
                 formatted_output: {
                   type: Type.STRING,
-                  description: 'Strict format according to system instructions, e.g. "SIGN: Hello\\nTYPE: Word\\nCONFIDENCE: High" or "SIGN: No sign detected".',
+                  description: 'Single or two-line formatted output, e.g. "SIGN: Hello\\nCONFIDENCE: High" or "SIGN: Unclear\\nCONFIDENCE: Low" or "SIGN: No sign detected".',
                 },
                 is_reliable: {
                   type: Type.BOOLEAN,
@@ -423,21 +395,20 @@ Return the identified sign, confidence level (High/Medium/Low), English translat
       });
     }
 
-    const fallbackResult: Record<string, any> = {
+    const fallbackResult = {
       recognized_sign: 'NONE',
       recognized_signs: [],
       english_translation: 'Sign unclear — please repeat.',
       confidence: 0.35,
       confidence_level: 'Low',
-      sign_type: 'Unknown',
-      formatted_output: 'SIGN: Unclear\nTYPE: Unknown\nCONFIDENCE: Low',
+      formatted_output: 'SIGN: Unclear\nCONFIDENCE: Low',
       is_reliable: false,
       uncertainty_reason: 'Sign unclear — please repeat.',
       language: signLanguage,
       mode,
     };
 
-    const parsedResult: any = safeParseGeminiJson(responseText, fallbackResult);
+    const parsedResult = safeParseGeminiJson(responseText, fallbackResult);
     parsedResult.language = signLanguage;
     parsedResult.mode = mode;
 
@@ -453,51 +424,19 @@ Return the identified sign, confidence level (High/Medium/Low), English translat
         : 'Low';
     parsedResult.confidence_level = confLevel;
 
-    // Infer and validate sign_type
-    let inferredType: 'Alphabet' | 'Fingerspelling' | 'Word' | 'Phrase' | 'Sentence' | 'Unknown' = parsedResult.sign_type;
-    const signUpper = (parsedResult.recognized_sign || '').trim().toUpperCase();
-    const trans = (parsedResult.english_translation || '').trim();
-
-    if (!inferredType || !['Alphabet', 'Fingerspelling', 'Word', 'Phrase', 'Sentence', 'Unknown'].includes(inferredType)) {
+    if (!parsedResult.formatted_output) {
       if (
-        signUpper === 'NONE' ||
-        signUpper.includes('NO SIGN') ||
-        signUpper.includes('UNCLEAR') ||
-        confLevel === 'Low' ||
-        !parsedResult.is_reliable
+        parsedResult.recognized_sign === 'NONE' ||
+        parsedResult.recognized_sign === 'No sign detected' ||
+        parsedResult.recognized_sign.toLowerCase() === 'no sign'
       ) {
-        inferredType = 'Unknown';
-      } else if (signUpper.length === 1 && /^[A-Z0-9]$/.test(signUpper)) {
-        inferredType = 'Alphabet';
-      } else if (parsedResult.is_sentence || trans.includes('.') || trans.includes('?') || trans.includes('!')) {
-        inferredType = 'Sentence';
-      } else if (trans.split(/\s+/).length > 1) {
-        inferredType = 'Phrase';
-      } else if (/^[A-Z]{2,6}$/.test(signUpper) && (signUpper === trans.toUpperCase() || parsedResult.is_fingerspelling)) {
-        inferredType = 'Fingerspelling';
+        parsedResult.formatted_output = 'SIGN: No sign detected';
+      } else if (confLevel === 'Low' || !parsedResult.is_reliable || parsedResult.recognized_sign.toLowerCase() === 'unclear') {
+        parsedResult.formatted_output = 'SIGN: Unclear\nCONFIDENCE: Low';
       } else {
-        inferredType = 'Word';
+        const displaySign = parsedResult.english_translation || parsedResult.recognized_sign;
+        parsedResult.formatted_output = `SIGN: ${displaySign}\nCONFIDENCE: ${confLevel}`;
       }
-    }
-    parsedResult.sign_type = inferredType;
-
-    // Enforce exact user-specified final formatted_output
-    if (
-      signUpper === 'NONE' ||
-      signUpper === 'NO SIGN DETECTED' ||
-      signUpper.includes('NO SIGN')
-    ) {
-      parsedResult.formatted_output = 'SIGN: No sign detected';
-    } else if (confLevel === 'Low' || !parsedResult.is_reliable || signUpper === 'UNCLEAR') {
-      parsedResult.formatted_output = 'SIGN: Unclear\nTYPE: Unknown\nCONFIDENCE: Low';
-    } else {
-      let displaySign = trans || parsedResult.recognized_sign;
-      if (inferredType === 'Alphabet') {
-        displaySign = signUpper.slice(0, 1);
-      } else if (inferredType === 'Fingerspelling') {
-        displaySign = trans.toUpperCase() || signUpper;
-      }
-      parsedResult.formatted_output = `SIGN: ${displaySign}\nTYPE: ${inferredType}\nCONFIDENCE: ${confLevel}`;
     }
 
     return res.json(parsedResult);

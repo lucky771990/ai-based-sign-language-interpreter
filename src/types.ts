@@ -23,7 +23,6 @@ export type RecognitionStatus =
   | 'waiting_hand'
   | 'holding'
   | 'locked'
-  | 'cooling_down'
   | 'capturing'
   | 'analyzing'
   | 'segmenting'
@@ -33,7 +32,6 @@ export type RecognitionStatus =
   | 'error';
 
 export type ConfidenceLevel = 'High' | 'Medium' | 'Low';
-export type SignType = 'Alphabet' | 'Fingerspelling' | 'Word' | 'Phrase' | 'Sentence' | 'Unknown';
 export type SignLanguage = 'ISL' | 'ASL' | 'BSL';
 export type SigningMode = 'continuous' | 'isolated';
 
@@ -134,7 +132,6 @@ export interface ASLRecognitionResult {
   recognized_sign: string;
   recognized_signs: string[];
   english_translation: string;
-  sign_type?: SignType;
   confidence: number;
   confidence_level?: ConfidenceLevel;
   formatted_output?: string;
@@ -167,7 +164,6 @@ export interface TranslationHistoryItem {
   formattedTime: string;
   recognized_signs: string[];
   english_translation: string;
-  sign_type?: SignType;
   confidence: number;
   confidence_level?: ConfidenceLevel;
   formatted_output?: string;

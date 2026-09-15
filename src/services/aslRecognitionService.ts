@@ -556,47 +556,14 @@ class ASLRecognitionService {
       const confLevel: 'High' | 'Medium' | 'Low' =
         data.confidence_level || (resolved.confidence >= 0.75 ? 'High' : resolved.confidence >= 0.50 ? 'Medium' : 'Low');
 
-      // Determine sign_type
-      let signType: 'Alphabet' | 'Fingerspelling' | 'Word' | 'Phrase' | 'Sentence' | 'Unknown' = data.sign_type;
-      const signUpper = (resolved.resolvedSign || '').trim().toUpperCase();
-      const trans = (resolved.resolvedWord || '').trim();
-
-      if (!signType || !['Alphabet', 'Fingerspelling', 'Word', 'Phrase', 'Sentence', 'Unknown'].includes(signType)) {
-        if (
-          signUpper === 'NONE' ||
-          signUpper.includes('NO SIGN') ||
-          signUpper.includes('UNCLEAR') ||
-          confLevel === 'Low' ||
-          !isReliable
-        ) {
-          signType = 'Unknown';
-        } else if (signUpper.length === 1 && /^[A-Z0-9]$/.test(signUpper)) {
-          signType = 'Alphabet';
-        } else if (data.is_sentence || trans.includes('.') || trans.includes('?') || trans.includes('!')) {
-          signType = 'Sentence';
-        } else if (trans.split(/\s+/).length > 1) {
-          signType = 'Phrase';
-        } else if (/^[A-Z]{2,6}$/.test(signUpper) && (signUpper === trans.toUpperCase() || data.is_fingerspelling)) {
-          signType = 'Fingerspelling';
-        } else {
-          signType = 'Word';
-        }
-      }
-
       let formattedOutput = data.formatted_output;
-      if (!formattedOutput || !formattedOutput.includes('TYPE:')) {
-        if (signUpper === 'NONE' || signUpper === 'NO SIGN DETECTED' || signUpper.includes('NO SIGN')) {
+      if (!formattedOutput) {
+        if (resolved.resolvedSign === 'NONE' || resolved.resolvedSign === 'No sign detected') {
           formattedOutput = 'SIGN: No sign detected';
-        } else if (!isReliable || confLevel === 'Low' || signUpper.includes('UNCLEAR')) {
-          formattedOutput = 'SIGN: Unclear\nTYPE: Unknown\nCONFIDENCE: Low';
+        } else if (!isReliable || confLevel === 'Low' || resolved.resolvedWord.toLowerCase().includes('unclear')) {
+          formattedOutput = 'SIGN: Unclear\nCONFIDENCE: Low';
         } else {
-          let displaySign = trans || resolved.resolvedSign;
-          if (signType === 'Alphabet') {
-            displaySign = signUpper.slice(0, 1);
-          } else if (signType === 'Fingerspelling') {
-            displaySign = trans.toUpperCase() || signUpper;
-          }
-          formattedOutput = `SIGN: ${displaySign}\nTYPE: ${signType}\nCONFIDENCE: ${confLevel}`;
+          formattedOutput = `SIGN: ${resolved.resolvedWord}\nCONFIDENCE: ${confLevel}`;
         }
       }
 
@@ -608,7 +575,6 @@ class ASLRecognitionService {
         recognized_sign: resolved.resolvedSign,
         recognized_signs: [resolved.resolvedSign],
         english_translation: resolved.resolvedWord,
-        sign_type: signType,
         confidence: resolved.confidence,
         confidence_level: confLevel,
         formatted_output: formattedOutput,

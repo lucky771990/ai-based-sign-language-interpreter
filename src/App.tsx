@@ -20,7 +20,6 @@ import {
   SignSegmentEvent,
   SentenceSpeedMode,
   CNNFeatureTensor,
-  SignType,
 } from './types';
 import { aslRecognitionService, getApiBaseUrl } from './services/aslRecognitionService';
 import { speechService } from './services/speechService';
@@ -102,8 +101,8 @@ export default function App() {
     model: 'gemini-3.8-flash',
   });
 
-  // Dedicated Section Mode: 'vocabulary' (Live Interpreter & Prominent Translation) vs 'sentence' (Focused Continuous Sentence Translation)
-  const [activeSection, setActiveSection] = useState<'sentence' | 'vocabulary'>('vocabulary');
+  // Dedicated Section Mode: 'sentence' (Focused Sentence Translation) vs 'vocabulary' (Single Signs & Reference)
+  const [activeSection, setActiveSection] = useState<'sentence' | 'vocabulary'>('sentence');
   const [sentenceSpeedMode, setSentenceSpeedMode] = useState<SentenceSpeedMode>('turbo');
 
   // Multi-Stage Pipeline & Sign Language Configuration (Default: ISL - Indian Sign Language)
@@ -760,28 +759,6 @@ export default function App() {
               confidence: sentenceResult.confidence,
               timestamp: Date.now(),
             };
-
-            const detectedType: SignType =
-              sentenceResult.new_gloss.length === 1 && /^[A-Z0-9]$/i.test(sentenceResult.new_gloss)
-                ? 'Alphabet'
-                : (sentenceResult.synthesized_sentence && sentenceResult.synthesized_sentence.split(' ').length > 2)
-                ? 'Sentence'
-                : 'Word';
-
-            const formatted = `SIGN: ${cleanWord}\nTYPE: ${detectedType}\nCONFIDENCE: High`;
-            setCurrentResult({
-              recognized_sign: sentenceResult.new_gloss,
-              recognized_signs: [sentenceResult.new_gloss],
-              english_translation: cleanWord,
-              sign_type: detectedType,
-              confidence: sentenceResult.confidence || 0.95,
-              confidence_level: 'High',
-              formatted_output: formatted,
-              is_reliable: true,
-              grammar_corrected_sentence: sentenceResult.synthesized_sentence,
-              language: signLanguage,
-              timestamp: Date.now(),
-            });
 
             setVisualFlash(true);
             setTimeout(() => setVisualFlash(false), 250);
