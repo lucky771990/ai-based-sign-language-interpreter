@@ -258,44 +258,29 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
         {/* Live Processing Indicator Badge inside Video */}
         {cameraPermission === 'granted' && isTranslating && (
           <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-950/80 backdrop-blur-md border border-slate-700/80 shadow-lg">
-            {recognitionStatus === 'rate_limited' || recognitionStatus === 'cooling_down' || rateLimitCooldownSeconds > 0 ? (
+            {recognitionStatus === 'rate_limited' || rateLimitCooldownSeconds > 0 ? (
               <>
                 <span className="h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                 <span className="text-xs font-semibold text-amber-300">
                   {rateLimitCooldownSeconds > 0
-                    ? `AI Quota Cooldown (${rateLimitCooldownSeconds}s)...`
-                    : 'AI Quota Cooldown Active...'}
+                    ? `Quota Cooldown (${rateLimitCooldownSeconds}s)...`
+                    : 'Quota Cooldown...'}
                 </span>
-              </>
-            ) : recognitionStatus === 'waiting_hand' ? (
-              <>
-                <span className="h-2.5 w-2.5 rounded-full bg-sky-400 animate-pulse"></span>
-                <span className="text-xs font-semibold text-sky-300">Waiting for hand gesture...</span>
-              </>
-            ) : recognitionStatus === 'holding' ? (
-              <>
-                <span className="h-2.5 w-2.5 rounded-full bg-indigo-400"></span>
-                <span className="text-xs font-semibold text-indigo-300">Holding sign (duplicate suppressed)</span>
-              </>
-            ) : recognitionStatus === 'locked' ? (
-              <>
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400"></span>
-                <span className="text-xs font-semibold text-emerald-300">Sign recognized (1.5s lock)</span>
               </>
             ) : recognitionStatus === 'analyzing' ? (
               <>
                 <span className="animate-spin h-2.5 w-2.5 border-2 border-indigo-400 border-t-transparent rounded-full"></span>
-                <span className="text-xs font-semibold text-indigo-300">Analyzing sign...</span>
+                <span className="text-xs font-semibold text-indigo-300">Analyzing ASL Signs...</span>
               </>
             ) : recognitionStatus === 'capturing' ? (
               <>
                 <span className="h-2.5 w-2.5 rounded-full bg-purple-400 animate-pulse"></span>
-                <span className="text-xs font-semibold text-purple-300">Capturing sign...</span>
+                <span className="text-xs font-semibold text-purple-300">Sampling Frames...</span>
               </>
             ) : (
               <>
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="text-xs font-semibold text-emerald-300">Event-based recognition active</span>
+                <span className="text-xs font-semibold text-emerald-300">Listening to Gestures</span>
               </>
             )}
           </div>

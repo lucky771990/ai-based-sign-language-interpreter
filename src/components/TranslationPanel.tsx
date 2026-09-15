@@ -80,71 +80,45 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
         </div>
 
         {/* Status / Confidence Badge */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {recognitionStatus === 'waiting_hand' && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-950/80 border border-blue-500/30 text-blue-300 animate-pulse">
-              <Hand className="w-3.5 h-3.5 text-blue-400" />
-              <span>Waiting for Hand</span>
-            </span>
-          )}
-          {recognitionStatus === 'holding' && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-950/80 border border-indigo-500/30 text-indigo-300">
-              <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Holding Gesture</span>
-            </span>
-          )}
-          {recognitionStatus === 'locked' && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/80 border border-emerald-500/30 text-emerald-300">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>1.5s Cooldown Active</span>
-            </span>
-          )}
-          {recognitionStatus === 'cooling_down' && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950/80 border border-amber-500/30 text-amber-300">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-              <span>Quota Cooldown Active</span>
-            </span>
-          )}
-          {currentResult && (
-            <>
-              {isNotConfigured ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Not Configured</span>
-                </span>
-              ) : isConnectionError ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Backend Offline</span>
-                </span>
-              ) : currentResult.is_auto_translated ? (
-                <span
-                  id="translation-auto-mapped-badge"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-950/80 border border-purple-500/40 text-purple-300"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Auto-Mapped Conversational</span>
-                </span>
-              ) : isReliable ? (
-                <span
-                  id="translation-confidence-high"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/80 border border-emerald-500/30 text-emerald-300"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>CONFIDENCE: {currentResult.confidence_level || 'High'} ({confidenceScore}%)</span>
-                </span>
-              ) : (
-                <span
-                  id="translation-confidence-low"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950/80 border border-amber-500/30 text-amber-300"
-                >
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                  <span>CONFIDENCE: {currentResult.confidence_level || 'Low'}</span>
-                </span>
-              )}
-            </>
-          )}
-        </div>
+        {currentResult && (
+          <div className="flex items-center gap-2">
+            {isNotConfigured ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
+                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                <span>Not Configured</span>
+              </span>
+            ) : isConnectionError ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
+                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                <span>Backend Offline</span>
+              </span>
+            ) : currentResult.is_auto_translated ? (
+              <span
+                id="translation-auto-mapped-badge"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-950/80 border border-purple-500/40 text-purple-300"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span>Auto-Mapped Conversational</span>
+              </span>
+            ) : isReliable ? (
+              <span
+                id="translation-confidence-high"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/80 border border-emerald-500/30 text-emerald-300"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{confidenceScore}% Confidence</span>
+              </span>
+            ) : (
+              <span
+                id="translation-confidence-low"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950/80 border border-amber-500/30 text-amber-300"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                <span>Low Confidence</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Main Text Content Area */}
@@ -238,17 +212,6 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
                     className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-snug break-words selection:bg-indigo-600"
                   >
                     "{currentResult.english_translation}"
-                  </div>
-
-                  {/* Standard Sign Language Output Format */}
-                  <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800/90 font-mono text-xs space-y-1">
-                    <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                      Standard Output Format
-                    </div>
-                    <div className="text-emerald-400 font-bold whitespace-pre-line leading-relaxed">
-                      {currentResult.formatted_output ||
-                        `SIGN: ${currentResult.english_translation || currentResult.recognized_sign}\nCONFIDENCE: ${currentResult.confidence_level || (isReliable ? 'High' : 'Low')}`}
-                    </div>
                   </div>
 
                   {/* Sign Gloss Badges */}

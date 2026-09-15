@@ -1,6 +1,6 @@
 {
   "name": "ASL Translate",
-  "description": "Fast, real-time sign language interpreter translating Indian Sign Language (ISL) and American Sign Language (ASL) into English using event-based vision and Gemini AI.",
+  "description": "Translate American Sign Language (ASL) into English text using live camera vision and Gemini AI.",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

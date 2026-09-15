@@ -20,9 +20,6 @@ export type CameraPermissionState =
 
 export type RecognitionStatus =
   | 'idle'
-  | 'waiting_hand'
-  | 'holding'
-  | 'locked'
   | 'capturing'
   | 'analyzing'
   | 'segmenting'
@@ -31,8 +28,7 @@ export type RecognitionStatus =
   | 'rate_limited'
   | 'error';
 
-export type ConfidenceLevel = 'High' | 'Medium' | 'Low';
-export type SignLanguage = 'ISL' | 'ASL' | 'BSL';
+export type SignLanguage = 'ASL' | 'BSL' | 'ISL';
 export type SigningMode = 'continuous' | 'isolated';
 
 export interface CandidateSign {
@@ -133,9 +129,6 @@ export interface ASLRecognitionResult {
   recognized_signs: string[];
   english_translation: string;
   confidence: number;
-  confidence_level?: ConfidenceLevel;
-  formatted_output?: string;
-  is_holding_previous?: boolean;
   is_reliable: boolean;
   duration?: string | number;
   alternatives?: string[];
@@ -165,8 +158,6 @@ export interface TranslationHistoryItem {
   recognized_signs: string[];
   english_translation: string;
   confidence: number;
-  confidence_level?: ConfidenceLevel;
-  formatted_output?: string;
   is_reliable: boolean;
   duration?: string | number;
   alternatives?: string[];
@@ -201,25 +192,11 @@ export interface ActiveSentence {
 export interface ASLReferenceSign {
   id: string;
   sign: string;
-  category:
-    | 'greetings'
-    | 'courtesy'
-    | 'questions'
-    | 'common'
-    | 'emergency'
-    | 'alphabet'
-    | 'people'
-    | 'phrases'
-    | 'situations';
+  category: 'greetings' | 'courtesy' | 'questions' | 'common' | 'emergency' | 'alphabet';
   handshape: string;
   movement: string;
   description: string;
   exampleSentence: string;
-  signLanguageNotes?: {
-    isl?: string;
-    asl?: string;
-    bsl?: string;
-  };
 }
 
 export interface CameraSettings {

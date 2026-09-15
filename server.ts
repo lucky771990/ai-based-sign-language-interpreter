@@ -184,44 +184,59 @@ const handleTranslationRequest = async (req: express.Request, res: express.Respo
       ? `Vision telemetry: Dominant hand: ${telemetry.dominantHand || 'unknown'}, Two-handed: ${telemetry.isTwoHandedSign ? 'YES' : 'NO'}, Movement: ${telemetry.movementDirection || 'stationary'}, Velocity: ${telemetry.velocity || 0}, Segmentation state: ${telemetry.segmentationState || 'UNKNOWN'}.`
       : '';
 
-    const systemInstruction = `You are an expert, fast, real-time sign language interpreter specializing in ${signLanguage} (${
-      signLanguage === 'ISL'
-        ? 'Indian Sign Language (ISL), prioritizing official ISL signs (Namaste/salute for greetings, chest/facial ISL grammar, Indian two-handed and single-handed signs)'
-        : signLanguage === 'BSL'
-        ? 'British Sign Language (BSL), recognizing two-handed manual alphabet and UK grammar conventions'
-        : 'American Sign Language (ASL)'
+    const systemInstruction = `You are an advanced, real-time Sign Language → Text interpreter specializing in ${signLanguage} (${
+      signLanguage === 'BSL'
+        ? 'British Sign Language, recognizing two-handed manual alphabet and UK grammar conventions'
+        : signLanguage === 'ISL'
+        ? 'International/Indian Sign Language'
+        : 'American Sign Language'
     }) translating into ${targetLanguage}.
 
-CORE VOCABULARY KNOWLEDGE BASE:
-Recognize signs accurately from this vocabulary:
-👋 Greetings: Hello, Hi, Good morning, Good afternoon, Good night, Goodbye, See you later, Welcome
-😊 Everyday words: Yes, No, Please, Thank you, Sorry, Help, Stop, Wait, Come, Go, More, Again, Finished, Good, Bad
-👤 People: I / Me, You, We, They, Friend, Family, Mother, Father, Brother, Sister, Teacher, Student
-💬 Useful phrases: What is your name?, My name is ___., How are you?, I am fine., Nice to meet you., Where are you from?, I don't understand., Please repeat., Please sign slowly., Can you help me?, What does this mean?, Do you know sign language?, I know a little sign language., I am learning sign language.
-🏠 Everyday situations: Food, Water, Bathroom, Home, School, Work, Phone, Book, Money, Time, Today, Tomorrow, Yesterday
+PRIMARY OPERATING DIRECTIVE:
+Think in terms of: VIDEO → MOVEMENT → SIGN → WORD → CONTEXT → MEANING → SENTENCE.
 
-RECOGNITION RULES & SPEED:
-1. Prioritize fast, accurate responses. Return the recognized word/phrase immediately when confidence is reached.
-2. If sign matches one of the vocabulary signs above or close variations in ${signLanguage}, identify it directly.
-3. NEVER mix signs from different sign languages. Strictly adhere to ${signLanguage}.
-4. Specific Guidance for Imperfect or Blurry Input:
-   - If camera image is blurry: uncertainty_reason: "Please hold your hand steady."
-   - If hand is too far away: uncertainty_reason: "Please move your hand closer."
-   - If multiple unclear hands/signs are detected: uncertainty_reason: "Please show one sign clearly."
-   - If confidence is low: uncertainty_reason: "Sign unclear — please repeat.", recognized_sign: "Unclear", confidence_level: "Low".
-   - If no valid hand or gesture is present: recognized_sign: "No sign detected", confidence: 0, confidence_level: "Low".
-5. Do NOT guess when confidence is low.
-6. Deduplication: One gesture held across frames yields ONE recognized sign.
-7. Provide the formatted_output string strictly matching:
-   "SIGN: [recognized English word/phrase]\\nCONFIDENCE: [High/Medium/Low]"
-   Or if no sign: "SIGN: No sign detected"
-   Or if unclear: "SIGN: Unclear\\nCONFIDENCE: Low"`;
+1. CORE OBJECTIVE & IMPERFECT SIGN HANDLING:
+   - Interpret the user's INTENDED MEANING rather than performing rigid one-to-one sign classification.
+   - The signer does NOT need to perform every sign perfectly. Real-world signing includes:
+     * Correct signs, slightly incorrect signs, incomplete signs, similar-looking signs
+     * Different signing speeds, small hand-position errors, finger occlusion, temporary tracking failures
+     * Variations between signers, signs performed at different angles or distances from the camera
+     * Motion blur, low lighting, background clutter, hands leaving frame briefly
+   - Do NOT immediately fail or output "unknown" when a sign is slightly incorrect. Use surrounding context to infer what the user is communicating.
+   - Never invent information that has no reasonable connection to the input.
 
-    const promptText = `Analyze camera image frame(s) for ${signLanguage} sign recognition. Target: ${targetLanguage}.
+2. FIVE PARAMETERS OF SIGN IDENTIFICATION:
+   - Handshape: Differentiate finger configurations (A vs S vs T vs M; 1 vs D; B vs 4; V vs K; open-5 vs claw-5).
+   - Location: Identify landmark contact or proximity:
+     * Chin / Mouth: MOTHER (thumb on chin), WATER (W on chin), THANK-YOU (chin forward), EAT/FOOD (flattened O to mouth).
+     * Forehead: FATHER (thumb on forehead), KNOW (fingertips to temple), FORGET (swipe across forehead).
+     * Chest: PLEASE (open palm circle), SORRY (A-fist circle), FINE (open-5 thumb on chest), LIKE (pulling from chest), TIRED (bent hands drooping at chest).
+     * Neutral space: WANT (claw hands pulling inward), NEED (X-hook), MEET (index fingers touching), HELP (thumbs up on flat palm lifting).
+   - Movement: Single firm stroke vs double-tap vs continuous circle vs hold.
+   - Palm Orientation: Inward, forward, upward, downward.
+   - Non-Manual Markers (NMM): Eyebrows furrowed (WH-questions), eyebrows raised (Yes/No questions), head shake (negation), head nod (affirmation).
+
+3. CONTEXT-AWARE DISAMBIGUATION:
+   - Use short-term conversation context to disambiguate visually similar signs:
+     * Hospital / medical context -> DOCTOR or MEDICINE over TEACHER or CANDY.
+     * Food / dining context -> HOME or EAT over HOSPITAL or TIRED.
+     * Financial / work context -> BANK over BENCH.
+     * Morning / beverage context -> COFFEE or TEA.
+
+4. TEMPORAL DEDUPLICATION & REPETITION HANDLING:
+   - ONE sign performed across multiple video frames must yield ONE word, NOT repeated words ("hello hello hello").
+   - If signer is resting or hands are out of frame, output recognized_sign: "NONE", confidence: 0, is_reliable: false.
+
+5. NATURAL LANGUAGE OUTPUT:
+   - Output natural human language in ${targetLanguage}.
+   - Never output raw gesture labels ("+ + +"), technical sign codes, or confidence scores in english_translation.
+   - Preserve meaning strictly: NEVER invert negation (e.g. "ME NOT LIKE TEA" -> "I don't like tea.").`;
+
+    const promptText = `Analyze sequential video frame(s) for ${signLanguage}. Mode: ${mode}. Target Language: ${targetLanguage}.
 ${telemetryInfo}
 ${contextPrompt}
 ${conversationPrompt}
-Return the identified sign, confidence level (High/Medium/Low), English translation, and standard formatted output.`;
+Return verified sign recognition, natural translation, and candidate alternatives.`;
 
     // In single_sign or isolated mode, prioritize gemini-3.8-flash for maximum visual accuracy
     const allModels = mode === 'single_sign' || mode === 'isolated'
@@ -272,14 +287,6 @@ Return the identified sign, confidence level (High/Medium/Low), English translat
                 confidence: {
                   type: Type.NUMBER,
                   description: 'Confidence score from 0.00 to 1.00 strictly matching visual evidence.',
-                },
-                confidence_level: {
-                  type: Type.STRING,
-                  description: 'Confidence level category: "High", "Medium", or "Low".',
-                },
-                formatted_output: {
-                  type: Type.STRING,
-                  description: 'Single or two-line formatted output, e.g. "SIGN: Hello\\nCONFIDENCE: High" or "SIGN: Unclear\\nCONFIDENCE: Low" or "SIGN: No sign detected".',
                 },
                 is_reliable: {
                   type: Type.BOOLEAN,
@@ -372,38 +379,32 @@ Return the identified sign, confidence level (High/Medium/Low), English translat
         return res.json({
           recognized_sign: 'NONE',
           recognized_signs: [],
-          english_translation: 'AI quota cooldown active. Recognition paused temporarily.',
+          english_translation: `Recognition service quota cooling down (${retryAfterSeconds}s). Resuming shortly...`,
           confidence: 0,
-          confidence_level: 'Low',
-          formatted_output: 'AI quota cooldown active. Recognition paused temporarily.',
           is_reliable: false,
           is_rate_limited: true,
           retry_after_seconds: retryAfterSeconds,
-          uncertainty_reason: 'AI quota cooldown active. Recognition paused temporarily.',
+          uncertainty_reason: 'API rate limit cooldown in effect.',
         });
       }
 
       return res.json({
         recognized_sign: 'NONE',
         recognized_signs: [],
-        english_translation: 'Sign unclear — please repeat.',
+        english_translation: '[uncertain sign]',
         confidence: 0,
-        confidence_level: 'Low',
-        formatted_output: 'SIGN: Unclear\nCONFIDENCE: Low',
         is_reliable: false,
-        uncertainty_reason: 'Sign unclear — please repeat.',
+        uncertainty_reason: 'Awaiting clearer visual gesture.',
       });
     }
 
     const fallbackResult = {
       recognized_sign: 'NONE',
       recognized_signs: [],
-      english_translation: 'Sign unclear — please repeat.',
+      english_translation: '[uncertain sign]',
       confidence: 0.35,
-      confidence_level: 'Low',
-      formatted_output: 'SIGN: Unclear\nCONFIDENCE: Low',
       is_reliable: false,
-      uncertainty_reason: 'Sign unclear — please repeat.',
+      uncertainty_reason: 'Awaiting clearer visual gesture.',
       language: signLanguage,
       mode,
     };
@@ -411,44 +412,14 @@ Return the identified sign, confidence level (High/Medium/Low), English translat
     const parsedResult = safeParseGeminiJson(responseText, fallbackResult);
     parsedResult.language = signLanguage;
     parsedResult.mode = mode;
-
-    // Enforce standardized confidence_level and formatted_output
-    const rawConf = typeof parsedResult.confidence === 'number' ? parsedResult.confidence : 0;
-    const confLevel: 'High' | 'Medium' | 'Low' =
-      parsedResult.confidence_level === 'High' || parsedResult.confidence_level === 'Medium' || parsedResult.confidence_level === 'Low'
-        ? parsedResult.confidence_level
-        : rawConf >= 0.75
-        ? 'High'
-        : rawConf >= 0.50
-        ? 'Medium'
-        : 'Low';
-    parsedResult.confidence_level = confLevel;
-
-    if (!parsedResult.formatted_output) {
-      if (
-        parsedResult.recognized_sign === 'NONE' ||
-        parsedResult.recognized_sign === 'No sign detected' ||
-        parsedResult.recognized_sign.toLowerCase() === 'no sign'
-      ) {
-        parsedResult.formatted_output = 'SIGN: No sign detected';
-      } else if (confLevel === 'Low' || !parsedResult.is_reliable || parsedResult.recognized_sign.toLowerCase() === 'unclear') {
-        parsedResult.formatted_output = 'SIGN: Unclear\nCONFIDENCE: Low';
-      } else {
-        const displaySign = parsedResult.english_translation || parsedResult.recognized_sign;
-        parsedResult.formatted_output = `SIGN: ${displaySign}\nCONFIDENCE: ${confLevel}`;
-      }
-    }
-
     return res.json(parsedResult);
   } catch (err: any) {
     console.error('Error during ASL recognition:', err);
     return res.json({
       recognized_sign: 'NONE',
       recognized_signs: [],
-      english_translation: 'Sign unclear — please repeat.',
+      english_translation: '[uncertain sign]',
       confidence: 0,
-      confidence_level: 'Low',
-      formatted_output: 'SIGN: Unclear\nCONFIDENCE: Low',
       is_reliable: false,
       uncertainty_reason: err.message || 'Service interruption',
     });

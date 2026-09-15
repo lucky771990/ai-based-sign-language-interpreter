@@ -105,8 +105,8 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<'sentence' | 'vocabulary'>('sentence');
   const [sentenceSpeedMode, setSentenceSpeedMode] = useState<SentenceSpeedMode>('turbo');
 
-  // Multi-Stage Pipeline & Sign Language Configuration (Default: ISL - Indian Sign Language)
-  const [signLanguage, setSignLanguage] = useState<SignLanguage>('ISL');
+  // Multi-Stage Pipeline & Sign Language Configuration
+  const [signLanguage, setSignLanguage] = useState<SignLanguage>('ASL');
   const [signingMode, setSigningMode] = useState<SigningMode>('continuous');
   const [telemetry, setTelemetry] = useState<HandFeatureTelemetry>(temporalVisionTracker.getTelemetry());
   const [cnnTelemetry, setCnnTelemetry] = useState<CNNFeatureTensor | null>(null);
@@ -801,13 +801,11 @@ export default function App() {
           currentTelemetry
         );
 
-        const frameFingerprint = videoRef.current ? aslRecognitionService.extractFingerprint(videoRef.current) : null;
         setCurrentResult(result);
 
         // Check if rate limited
         if (result.is_rate_limited) {
           const cooldown = result.retry_after_seconds || 15;
-          aslRecognitionService.setQuotaCooldown(cooldown * 1000);
           setRateLimitCooldownSeconds(cooldown);
           rateLimitCooldownRef.current = cooldown;
           setRecognitionStatus('rate_limited');
@@ -822,8 +820,11 @@ export default function App() {
 
         // Check if sign is reliable and not a duplicate within cooldown
         if (result.is_reliable && result.recognized_sign !== 'NONE' && result.english_translation) {
-          // Continuous signing deduplication & 1500ms lock enforcement
-          aslRecognitionService.recordRecognizedSign(result.recognized_sign, frameFingerprint);
+          // Continuous signing deduplication guard: avoid spitting duplicate words while the user holds a sign
+          if (!isManualTrigger && aslRecognitionService.shouldDebounceSign(result.recognized_sign, 1500)) {
+            setRecognitionStatus('idle');
+            return;
+          }
 
           setRecognitionStatus('success');
 
@@ -909,12 +910,7 @@ export default function App() {
   );
 
   /**
-   * Event-Based Translation Loop Runner:
-   * - Only analyzes camera when a hand/sign is detected
-   * - Immediately returns result when recognized with confidence
-   * - Enforces a 1.5s lock cooldown after recognition
-   * - Suppresses duplicate scans if the user holds the same sign
-   * - Resumes only when gesture disappears or clearly changes
+   * Continuous translation loop runner
    */
   useEffect(() => {
     if (cameraPermission !== 'granted' || !isTranslating) {
@@ -928,65 +924,21 @@ export default function App() {
 
     isLoopRunningRef.current = true;
 
-    const runEventLoop = async () => {
+    const runLoop = async () => {
       if (!isLoopRunningRef.current || !isTranslating) return;
 
-      if (!videoRef.current) {
-        translationLoopRef.current = setTimeout(runEventLoop, 200);
-        return;
-      }
-
-      // Check quota cooldown
-      if (aslRecognitionService.isQuotaCoolingDown()) {
-        const remainingMs = aslRecognitionService.getQuotaCooldownRemainingMs();
-        const sec = Math.ceil(remainingMs / 1000);
-        setRateLimitCooldownSeconds(sec);
-        rateLimitCooldownRef.current = sec;
-        setRecognitionStatus('cooling_down');
-        translationLoopRef.current = setTimeout(runEventLoop, Math.min(1000, remainingMs));
-        return;
-      }
-
-      // Check 1.5s lock cooldown after recognizing a sign
-      if (aslRecognitionService.isLocked()) {
-        setRecognitionStatus('locked');
-        translationLoopRef.current = setTimeout(runEventLoop, 200);
-        return;
-      }
-
-      // Event-based hand presence and gesture hold check
-      const gestureState = aslRecognitionService.checkHandAndGestureState(videoRef.current);
-
-      if (!gestureState.hasHand) {
-        setRecognitionStatus('waiting_hand');
-        translationLoopRef.current = setTimeout(runEventLoop, 250);
-        return;
-      }
-
-      if (gestureState.isSameGestureHeld) {
-        // Sign remains visible with >= 90% similarity: treat as same gesture, avoid scanning again
-        setRecognitionStatus('holding');
-        translationLoopRef.current = setTimeout(runEventLoop, 250);
-        return;
-      }
-
-      // If already sending an API request, wait
-      if (aslRecognitionService.getIsProcessing()) {
-        translationLoopRef.current = setTimeout(runEventLoop, 200);
-        return;
-      }
-
-      // Hand detected, gesture changed or newly appeared, and system unlocked!
       await processFrameSequence(false);
 
       if (isLoopRunningRef.current && isTranslating) {
-        const nextDelay = aslRecognitionService.isLocked() ? 300 : 200;
-        translationLoopRef.current = setTimeout(runEventLoop, nextDelay);
+        const nextDelay = rateLimitCooldownRef.current > 0
+          ? Math.max(3000, rateLimitCooldownRef.current * 1000)
+          : settings.sampleIntervalMs;
+        translationLoopRef.current = setTimeout(runLoop, nextDelay);
       }
     };
 
     // Kick off loop with small initial delay
-    translationLoopRef.current = setTimeout(runEventLoop, 250);
+    translationLoopRef.current = setTimeout(runLoop, 250);
 
     return () => {
       if (translationLoopRef.current) {
@@ -994,7 +946,7 @@ export default function App() {
         translationLoopRef.current = null;
       }
     };
-  }, [cameraPermission, isTranslating, processFrameSequence]);
+  }, [cameraPermission, isTranslating, settings.sampleIntervalMs, processFrameSequence]);
 
   // Handler functions
   const handleChangeSpeed = (intervalMs: number) => {
