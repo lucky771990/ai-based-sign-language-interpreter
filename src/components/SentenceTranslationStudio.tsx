@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Volume2,
   VolumeX,
@@ -20,6 +20,8 @@ import {
   Camera,
   CameraOff,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   MessageSquare,
   ArrowRight,
   X,
@@ -30,6 +32,8 @@ import {
   Filter,
   Eye,
   ExternalLink,
+  Search,
+  BookOpen,
 } from 'lucide-react';
 import {
   ActiveSentence,
@@ -44,6 +48,11 @@ import {
 } from '../types';
 import { cnnSentenceEngine } from '../services/cnnSentenceEngine';
 import { languageContextEngine } from '../services/languageContextEngine';
+import {
+  COMMON_CONVERSATIONAL_SENTENCES,
+  SENTENCE_STUDIO_CATEGORIES,
+  CommonSentenceItem,
+} from '../data/commonSentences';
 
 interface SentenceTranslationStudioProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -82,19 +91,47 @@ interface SentenceTranslationStudioProps {
   onClearHistory: () => void;
 }
 
-const COMMON_CONVERSATIONAL_SENTENCES = [
-  { label: 'How are you?', glosses: ['HOW', 'YOU'], text: 'How are you?' },
-  { label: 'Nice to meet you', glosses: ['NICE', 'MEET', 'YOU'], text: 'Nice to meet you.' },
-  { label: 'What is your name?', glosses: ['NAME', 'YOU', 'WHAT'], text: 'What is your name?' },
-  { label: 'I will go tomorrow', glosses: ['ME', 'SCHOOL', 'TOMORROW', 'GO'], text: 'I will go to school tomorrow.' },
-  { label: 'Do you want food?', glosses: ['YOU', 'FOOD', 'WANT'], text: 'Do you want food?' },
-  { label: 'I met my friend yesterday', glosses: ['YESTERDAY', 'FRIEND', 'MEET'], text: 'I met my friend yesterday.' },
-  { label: 'I do not like tea', glosses: ['ME', 'NOT', 'LIKE', 'TEA'], text: "I don't like tea." },
-  { label: 'Where is the bathroom?', glosses: ['BATHROOM', 'WHERE'], text: 'Where is the bathroom?' },
-  { label: 'I am tired want sleep', glosses: ['I', 'TIRED', 'WANT', 'SLEEP'], text: 'I am tired and want to sleep.' },
-  { label: 'I want coffee', glosses: ['I', 'WANT', 'COFFEE'], text: 'I want coffee.' },
-  { label: 'Please help me', glosses: ['PLEASE', 'HELP', 'ME'], text: 'Please help me!' },
-  { label: 'Thank you very much', glosses: ['THANK-YOU', 'VERY', 'MUCH'], text: 'Thank you very much.' },
+const QUICK_SIGN_VOCABULARY = [
+  'HELLO',
+  'GOOD',
+  'MORNING',
+  'AFTERNOON',
+  'EVENING',
+  'HOW',
+  'YOU',
+  'FINE',
+  'THANK-YOU',
+  'MEET',
+  'SEE',
+  'LATER',
+  'CARE',
+  'WHAT',
+  'DO',
+  'WHERE',
+  'GO',
+  'HAPPEN',
+  'OKAY',
+  'UNDERSTAND',
+  'AGAIN',
+  'SLOW',
+  'MINUTE',
+  'NO',
+  'PROBLEM',
+  'PLEASE',
+  'WELCOME',
+  'EXCUSE-ME',
+  'SORRY',
+  'MAY',
+  'HELP',
+  'YES',
+  'SURE',
+  'OF-COURSE',
+  'MAYBE',
+  'THINK',
+  'YET',
+  'SOUNDS',
+  'GREAT',
+  'NEVER-MIND',
 ];
 
 export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps> = ({
@@ -138,8 +175,35 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
   const [showFeatureMaps, setShowFeatureMaps] = useState(true);
   const [quickInputText, setQuickInputText] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [sentenceSearchQuery, setSentenceSearchQuery] = useState<string>('');
+  const [expandedSentenceId, setExpandedSentenceId] = useState<string | null>(null);
+  const [showSignVocabularyPills, setShowSignVocabularyPills] = useState<boolean>(false);
+  const [copiedSentenceId, setCopiedSentenceId] = useState<string | null>(null);
   const lastSpokenSentenceRef = useRef<string>('');
   const cnnCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const filteredSentences = useMemo(() => {
+    return COMMON_CONVERSATIONAL_SENTENCES.filter((item) => {
+      const matchesCat = selectedCategory === 'all' || item.category === selectedCategory;
+      if (!matchesCat) return false;
+      if (!sentenceSearchQuery.trim()) return true;
+      const q = sentenceSearchQuery.toLowerCase();
+      const sentenceText = item.sentence || item.text || item.label || '';
+      return (
+        sentenceText.toLowerCase().includes(q) ||
+        item.categoryLabel.toLowerCase().includes(q) ||
+        item.glosses.some((g) => g.toLowerCase().includes(q)) ||
+        (item.aslDescription && item.aslDescription.toLowerCase().includes(q))
+      );
+    });
+  }, [selectedCategory, sentenceSearchQuery]);
+
+  const handleCopyPresetSentence = (id: string, textToCopy: string) => {
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedSentenceId(id);
+    setTimeout(() => setCopiedSentenceId(null), 2000);
+  };
 
   const handleQuickInputSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -943,28 +1007,68 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
             </div>
           </div>
 
-          {/* Quick Conversational Sentence Starters & Instant Input */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                Quick Sentence Translator & Practice
-              </span>
-              <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
-                <Zap className="w-3 h-3" />
-                Instant Grammar Synthesis
-              </span>
+          {/* Conversational Sign Language Studio & Practice */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-800/80">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-indigo-400" />
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">
+                    Conversational Sign Language Studio & Practice
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-700/40">
+                    {COMMON_CONVERSATIONAL_SENTENCES.length} Sentences
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Translate full phrases across Greetings, Everyday Conversation, Polite Phrases, and Useful Responses using sign language.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1 bg-emerald-950/40 border border-emerald-800/40 px-2.5 py-1 rounded-lg">
+                  <Zap className="w-3 h-3" />
+                  Instant Grammar Synthesis
+                </span>
+                <button
+                  onClick={() => setShowSignVocabularyPills((prev) => !prev)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    showSignVocabularyPills
+                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+                      : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Sign Tokens</span>
+                  {showSignVocabularyPills ? (
+                    <ChevronUp className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Quick Interactive Input Field */}
             <form onSubmit={handleQuickInputSubmit} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={quickInputText}
-                onChange={(e) => setQuickInputText(e.target.value)}
-                placeholder="Type or test ASL glosses (e.g. ME SCHOOL TOMORROW GO or YOU WANT WATER)..."
-                className="flex-1 bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none transition-all font-mono"
-              />
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={quickInputText}
+                  onChange={(e) => setQuickInputText(e.target.value)}
+                  placeholder="Type sign glosses (e.g. HOW YOU, GOOD MORNING, CAN YOU HELP ME)..."
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl pl-3.5 pr-8 py-2 text-xs text-white placeholder-slate-500 outline-none transition-all font-mono"
+                />
+                {quickInputText && (
+                  <button
+                    type="button"
+                    onClick={() => setQuickInputText('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={!quickInputText.trim()}
@@ -975,21 +1079,323 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
               </button>
             </form>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-              {COMMON_CONVERSATIONAL_SENTENCES.map((preset, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onSelectQuickSentence(preset.text, preset.glosses)}
-                  className="p-2 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-indigo-500/50 hover:bg-indigo-950/20 text-left transition-all text-xs group cursor-pointer"
-                >
-                  <p className="font-semibold text-slate-200 group-hover:text-indigo-300 truncate">
-                    {preset.label}
+            {/* Collapsible Sign Vocabulary Token Palette */}
+            {showSignVocabularyPills && (
+              <div className="p-3 rounded-xl bg-slate-950/80 border border-indigo-900/40 space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="font-semibold text-indigo-300 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    Interactive Sign Gloss Palette (Click to append into live sentence):
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    {QUICK_SIGN_VOCABULARY.length} vocabulary signs
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
+                  {QUICK_SIGN_VOCABULARY.map((signGloss) => (
+                    <button
+                      key={signGloss}
+                      type="button"
+                      onClick={() => onAddWord && onAddWord(signGloss)}
+                      className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-indigo-600 text-slate-300 hover:text-white border border-slate-800 hover:border-indigo-500 text-[11px] font-mono font-semibold transition-all cursor-pointer shadow-xs active:scale-95"
+                      title={`Click to add "${signGloss}" to active sentence`}
+                    >
+                      +{signGloss}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Category Navigation Tabs & Search Controls */}
+            <div className="space-y-3 pt-1">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                {/* Category Pills */}
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      selectedCategory === 'all'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800/80 hover:bg-slate-900'
+                    }`}
+                  >
+                    <span>All Phrases</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        selectedCategory === 'all'
+                          ? 'bg-indigo-700 text-white'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {COMMON_CONVERSATIONAL_SENTENCES.length}
+                    </span>
+                  </button>
+
+                  {SENTENCE_STUDIO_CATEGORIES.map((cat) => {
+                    const catCount = COMMON_CONVERSATIONAL_SENTENCES.filter(
+                      (s) => s.category === cat.id
+                    ).length;
+                    const isSelected = selectedCategory === cat.id;
+
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setSelectedCategory(cat.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                            : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800/80 hover:bg-slate-900'
+                        }`}
+                      >
+                        <span>{cat.emoji || cat.icon || '💬'}</span>
+                        <span>{cat.label}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                            isSelected
+                              ? 'bg-indigo-700 text-white'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {catCount}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Instant Search Bar */}
+                <div className="relative min-w-[200px] sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={sentenceSearchQuery}
+                    onChange={(e) => setSentenceSearchQuery(e.target.value)}
+                    placeholder="Search phrase or sign..."
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl pl-8.5 pr-8 py-1.5 text-xs text-white placeholder-slate-500 outline-none transition-all"
+                  />
+                  {sentenceSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSentenceSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Sentences Count & Search Indicator */}
+              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                <span>
+                  Showing{' '}
+                  <strong className="text-slate-200">{filteredSentences.length}</strong>{' '}
+                  phrases
+                  {sentenceSearchQuery && (
+                    <span>
+                      {' '}
+                      matching &quot;<span className="text-indigo-300">{sentenceSearchQuery}</span>&quot;
+                    </span>
+                  )}
+                </span>
+                {sentenceSearchQuery && (
+                  <button
+                    onClick={() => setSentenceSearchQuery('')}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 underline"
+                  >
+                    Clear search
+                  </button>
+                )}
+              </div>
+
+              {/* Categorized Conversational Sentence Cards Grid */}
+              {filteredSentences.length === 0 ? (
+                <div className="p-8 text-center rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2">
+                  <HelpCircle className="w-8 h-8 text-slate-500 mx-auto" />
+                  <p className="text-sm font-semibold text-slate-300">
+                    No phrases found matching &quot;{sentenceSearchQuery}&quot;
                   </p>
-                  <p className="text-[10px] text-slate-400 font-mono truncate mt-0.5">
-                    {preset.glosses.join(' ')}
+                  <p className="text-xs text-slate-500">
+                    Try searching for another word or select another category above.
                   </p>
-                </button>
-              ))}
+                  <button
+                    onClick={() => {
+                      setSentenceSearchQuery('');
+                      setSelectedCategory('all');
+                    }}
+                    className="mt-2 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold"
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[540px] overflow-y-auto pr-1">
+                  {filteredSentences.map((item) => {
+                    const isExpanded = expandedSentenceId === item.id;
+                    const isCopied = copiedSentenceId === item.id;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`rounded-xl border transition-all p-3.5 flex flex-col justify-between space-y-3 ${
+                          isExpanded
+                            ? 'bg-slate-950 border-indigo-500/80 shadow-md ring-1 ring-indigo-500/20'
+                            : 'bg-slate-950/80 border-slate-800/90 hover:border-slate-700 hover:bg-slate-950'
+                        }`}
+                      >
+                        {/* Top Metadata Row */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-1">
+                              <span>
+                                {SENTENCE_STUDIO_CATEGORIES.find((c) => c.id === item.category)?.emoji || item.emoji || '💬'}
+                              </span>
+                              <span>{item.categoryLabel}</span>
+                            </span>
+
+                            {/* Audio & Copy Quick Controls */}
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => onSpeakSentence(item.sentence || item.text || '')}
+                                className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-indigo-300 border border-slate-800/80 transition-colors cursor-pointer"
+                                title={`Speak "${item.sentence || item.text}"`}
+                              >
+                                <Volume2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyPresetSentence(item.id, item.sentence || item.text || '')}
+                                className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/80 transition-colors cursor-pointer"
+                                title="Copy sentence text"
+                              >
+                                {isCopied ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Target English Sentence */}
+                          <p className="text-sm font-bold text-white tracking-tight leading-snug">
+                            {item.sentence || item.text}
+                          </p>
+
+                          {/* ASL Gloss Badges Sequence */}
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                                ASL Glosses:
+                              </span>
+                              {item.glosses.map((g, gIdx) => (
+                                <button
+                                  key={gIdx}
+                                  type="button"
+                                  onClick={() => onAddWord && onAddWord(g)}
+                                  className="px-2 py-0.5 rounded-md bg-indigo-950/60 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-800/50 text-[11px] font-mono font-bold transition-all cursor-pointer active:scale-95"
+                                  title={`Click to append sign gloss "${g}" into active sentence`}
+                                >
+                                  {g}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Sign Description */}
+                            {item.aslDescription && (
+                              <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                                {item.aslDescription}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card Bottom Actions */}
+                        <div className="pt-2 border-t border-slate-800/70 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onSelectQuickSentence(item.sentence || item.text || '', item.glosses)
+                              }
+                              className="flex-1 py-1.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition-all shadow-sm hover:shadow-indigo-500/25 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98]"
+                            >
+                              <Zap className="w-3.5 h-3.5" />
+                              <span>Translate Sentence</span>
+                            </button>
+
+                            {item.signsBreakdown && item.signsBreakdown.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedSentenceId((prev) =>
+                                    prev === item.id ? null : item.id
+                                  )
+                                }
+                                className={`py-1.5 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                                  isExpanded
+                                    ? 'bg-slate-800 text-indigo-300 border-indigo-500/50'
+                                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
+                                }`}
+                                title="View step-by-step sign language instructions"
+                              >
+                                <BookOpen className="w-3.5 h-3.5" />
+                                <span>Guide</span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3 h-3" />
+                                ) : (
+                                  <ChevronDown className="w-3 h-3" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Step-by-Step Sign Breakdown Guide (Expanded) */}
+                          {isExpanded && item.signsBreakdown && (
+                            <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                                <BookOpen className="w-3 h-3" />
+                                Step-by-Step Sign Breakdown:
+                              </span>
+
+                              <div className="space-y-1.5">
+                                {item.signsBreakdown.map((sb, stepIdx) => (
+                                  <div
+                                    key={stepIdx}
+                                    className="p-2 rounded-lg bg-slate-900/90 border border-slate-800 text-[11px] space-y-1"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-mono font-bold text-indigo-300 bg-indigo-950/80 px-1.5 py-0.2 rounded border border-indigo-800/40">
+                                        Step {stepIdx + 1}: {sb.sign}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 italic">
+                                        {sb.handshape}
+                                      </span>
+                                    </div>
+                                    <p className="text-slate-300 leading-snug">
+                                      {sb.movement}
+                                    </p>
+                                    {(sb.tips || sb.nonManual) && (
+                                      <p className="text-[10px] text-amber-300/90 flex items-center gap-1">
+                                        <span className="font-semibold">Expression/Tips:</span>{' '}
+                                        {sb.tips || sb.nonManual}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

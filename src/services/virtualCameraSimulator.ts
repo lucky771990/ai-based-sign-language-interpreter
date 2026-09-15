@@ -14,12 +14,23 @@ export interface SimulationSignGesture {
 
 export const SIMULATION_SIGNS: SimulationSignGesture[] = [
   { gloss: 'HELLO', label: 'Hello (Open Hand Wave)', durationMs: 2200, description: 'Open hand touches temple and moves forward-right' },
+  { gloss: 'GOOD', label: 'Good (Chin to Hand)', durationMs: 2000, description: 'Flat hand touches chin and falls into base open palm' },
+  { gloss: 'MORNING', label: 'Morning (Sun Rising)', durationMs: 2200, description: 'Dominant arm rises from non-dominant arm crook' },
+  { gloss: 'FINE', label: 'Fine (5-Hand Chest Tap)', durationMs: 1800, description: 'Thumb of open 5-hand taps chest twice comfortably' },
   { gloss: 'THANK-YOU', label: 'Thank You (Chin to Outward)', durationMs: 2000, description: 'Flat hand touches chin and extends outward' },
   { gloss: 'ME', label: 'Me / I (Chest Point)', durationMs: 1800, description: 'Index finger touches upper center chest' },
   { gloss: 'YOU', label: 'You (Forward Point)', durationMs: 1800, description: 'Index finger points forward toward interlocutor' },
+  { gloss: 'MEET', label: 'Meet (Two Fingers Together)', durationMs: 2000, description: 'Two index fingers face each other and meet' },
+  { gloss: 'LATER', label: 'Later (Clock Hand Tilt)', durationMs: 2000, description: 'L-handshape tilts forward from wrist' },
+  { gloss: 'UNDERSTAND', label: 'Understand (Lightbulb Flick)', durationMs: 2000, description: 'Index finger flicks upward near temple' },
+  { gloss: 'PLEASE', label: 'Please (Chest Circle)', durationMs: 2400, description: 'Flat hand rubs circular clockwise motion on chest' },
+  { gloss: 'SORRY', label: 'Sorry (Fist Chest Circle)', durationMs: 2200, description: 'A-fist rubs gently in circle on center chest' },
+  { gloss: 'HELP', label: 'Help (Fist on Base Palm)', durationMs: 2200, description: 'Dominant fist on base palm lifts upward toward body' },
+  { gloss: 'YES', label: 'Yes (Nodding Fist)', durationMs: 1800, description: 'S-fist nods up and down at wrist' },
+  { gloss: 'MAYBE', label: 'Maybe (Balance Scales)', durationMs: 2400, description: 'Both open palms alternate lifting like scales' },
+  { gloss: 'GREAT', label: 'Great (Two Open Hands Push)', durationMs: 2000, description: 'Both 5-hands push outward enthusiastically' },
   { gloss: 'WANT', label: 'Want (Two-Hand Pull)', durationMs: 2400, description: 'Both hands claw and pull inward toward body' },
   { gloss: 'WATER', label: 'Water (W-Hand Chin Tap)', durationMs: 2000, description: 'W-handshape index finger taps chin twice' },
-  { gloss: 'PLEASE', label: 'Please (Chest Circle)', durationMs: 2400, description: 'Flat hand rubs circular clockwise motion on chest' },
   { gloss: 'GO', label: 'Go (Rolling Forward)', durationMs: 2000, description: 'Both index fingers arc forward and down' },
   { gloss: 'SCHOOL', label: 'School (Double Clap)', durationMs: 2200, description: 'Dominant open hand claps across base open hand' },
 ];
@@ -362,6 +373,121 @@ class VirtualCameraSimulator {
         leftY = shoulderY + 40 + Math.sin(p * Math.PI) * -30;
         rightOpenness = 0.2;
         leftOpenness = 0.2;
+        break;
+      }
+      case 'GOOD': {
+        // Flat hand touches chin and drops to base open palm
+        isTwoHanded = true;
+        leftX = centerX - 10;
+        leftY = shoulderY + 45;
+        leftOpenness = 0.9;
+        if (p < 0.4) {
+          rightX = centerX + 10;
+          rightY = faceY + 25;
+        } else {
+          const t = (p - 0.4) / 0.6;
+          rightX = centerX - 10 + t * 5;
+          rightY = faceY + 25 + t * (shoulderY + 20 - faceY);
+        }
+        rightOpenness = 0.9;
+        break;
+      }
+      case 'MORNING': {
+        // Arm rises from crook of base arm like sun rising
+        isTwoHanded = true;
+        leftX = centerX - 40;
+        leftY = shoulderY + 50;
+        leftOpenness = 0.8;
+        rightX = centerX + 20;
+        rightY = shoulderY + 60 - p * 80;
+        rightOpenness = 0.95;
+        break;
+      }
+      case 'FINE': {
+        // Thumb of 5-hand taps center chest
+        rightX = centerX + 5 + Math.abs(doubleCycle) * 12;
+        rightY = shoulderY + 30;
+        rightOpenness = 1.0;
+        break;
+      }
+      case 'MEET': {
+        // Both index fingers face each other and meet
+        isTwoHanded = true;
+        const meetProgress = Math.min(1, p * 1.5);
+        leftX = centerX - 80 + meetProgress * 65;
+        leftY = shoulderY + 35;
+        leftOpenness = 0.2;
+        rightX = centerX + 80 - meetProgress * 65;
+        rightY = shoulderY + 35;
+        rightOpenness = 0.2;
+        break;
+      }
+      case 'LATER': {
+        // L-hand tilts forward from wrist like clock hand
+        rightX = centerX + 40;
+        rightY = shoulderY + 30;
+        rightOpenness = 0.4;
+        rightRotation = p * 0.8;
+        break;
+      }
+      case 'UNDERSTAND': {
+        // Index flicks up near temple like lightbulb turning on
+        rightX = centerX + 45;
+        rightY = faceY - 5;
+        rightOpenness = p < 0.3 ? 0.1 : 0.35;
+        rightRotation = -0.3;
+        break;
+      }
+      case 'SORRY': {
+        // A-fist circular rubbing motion on center chest
+        const angle = p * Math.PI * 4;
+        rightX = centerX + Math.cos(angle) * 20;
+        rightY = shoulderY + 25 + Math.sin(angle) * 15;
+        rightOpenness = 0.1; // Fist
+        break;
+      }
+      case 'HELP': {
+        // Fist on base flat palm lifts upward toward body
+        isTwoHanded = true;
+        const lift = Math.sin(p * Math.PI) * 35;
+        leftX = centerX;
+        leftY = shoulderY + 55 - lift;
+        leftOpenness = 0.9;
+        rightX = centerX;
+        rightY = leftY - 22;
+        rightOpenness = 0.1;
+        break;
+      }
+      case 'YES': {
+        // S-fist nods up and down at wrist
+        rightX = centerX + 35;
+        rightY = shoulderY + 20 + Math.sin(p * Math.PI * 3) * 15;
+        rightOpenness = 0.1; // Fist
+        rightRotation = Math.sin(p * Math.PI * 3) * 0.3;
+        break;
+      }
+      case 'MAYBE': {
+        // Both flat hands alternate up and down like scales
+        isTwoHanded = true;
+        const scaleWave = Math.sin(p * Math.PI * 3) * 25;
+        leftX = centerX - 50;
+        leftY = shoulderY + 40 + scaleWave;
+        leftOpenness = 0.9;
+        rightX = centerX + 50;
+        rightY = shoulderY + 40 - scaleWave;
+        rightOpenness = 0.9;
+        break;
+      }
+      case 'GREAT': {
+        // Both open 5-hands push outward enthusiastically
+        isTwoHanded = true;
+        const push = Math.sin(p * Math.PI) * 25;
+        leftX = centerX - 60 - push * 0.5;
+        leftY = shoulderY + 20 - push;
+        leftOpenness = 1.0;
+        rightX = centerX + 60 + push * 0.5;
+        rightY = shoulderY + 20 - push;
+        rightOpenness = 1.0;
         break;
       }
       case 'SCHOOL': {
