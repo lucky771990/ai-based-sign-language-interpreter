@@ -184,59 +184,68 @@ const handleTranslationRequest = async (req: express.Request, res: express.Respo
       ? `Vision telemetry: Dominant hand: ${telemetry.dominantHand || 'unknown'}, Two-handed: ${telemetry.isTwoHandedSign ? 'YES' : 'NO'}, Movement: ${telemetry.movementDirection || 'stationary'}, Velocity: ${telemetry.velocity || 0}, Segmentation state: ${telemetry.segmentationState || 'UNKNOWN'}.`
       : '';
 
-    const systemInstruction = `You are an advanced, real-time Sign Language → Text interpreter specializing in ${signLanguage} (${
-      signLanguage === 'BSL'
-        ? 'British Sign Language, recognizing two-handed manual alphabet and UK grammar conventions'
-        : signLanguage === 'ISL'
-        ? 'International/Indian Sign Language'
-        : 'American Sign Language'
+    const systemInstruction = `You are an expert, fast, real-time sign language interpreter specializing in ${signLanguage} (${
+      signLanguage === 'ISL'
+        ? 'Indian Sign Language (ISL), prioritizing official ISL signs (two-handed alphabet, Namaste/salute for greetings, chest/facial ISL grammar, Indian two-handed and single-handed signs)'
+        : signLanguage === 'BSL'
+        ? 'British Sign Language (BSL), recognizing two-handed manual alphabet and UK grammar conventions'
+        : 'American Sign Language (ASL), recognizing one-handed manual alphabet and ASL grammar'
     }) translating into ${targetLanguage}.
 
-PRIMARY OPERATING DIRECTIVE:
-Think in terms of: VIDEO → MOVEMENT → SIGN → WORD → CONTEXT → MEANING → SENTENCE.
+CORE GOAL & TRANSLATION LEVELS:
+Translate the user's hand signs into the corresponding English alphabet/letter, word, phrase, or complete sentence using the selected sign language (${signLanguage}).
+Determine accurately which of the following 5 levels the sign belongs to:
+1. Alphabet / fingerspelling — recognize individual letters such as A, B, C, D, etc. (and numbers when supported).
+2. Spelled words — combine recognized letters into a word when the user fingerspells it (e.g. C -> A -> T => WORD: CAT, or H -> E -> L -> L -> O => HELLO).
+3. Words — recognize individual signed lexical words such as Hello, Water, Thank you, Help, Yes, No, Stop, etc.
+4. Phrases — recognize commonly used multi-word expressions (e.g. "What is your name?", "How are you?", "Nice to meet you.", "Please repeat.", "Can you help me?", "Please sign slowly.").
+5. Sentences — recognize a sequence of signs and translate them into a natural, grammatically correct English sentence (e.g. "Hello. How are you? I am fine.", "I want water.").
 
-1. CORE OBJECTIVE & IMPERFECT SIGN HANDLING:
-   - Interpret the user's INTENDED MEANING rather than performing rigid one-to-one sign classification.
-   - The signer does NOT need to perform every sign perfectly. Real-world signing includes:
-     * Correct signs, slightly incorrect signs, incomplete signs, similar-looking signs
-     * Different signing speeds, small hand-position errors, finger occlusion, temporary tracking failures
-     * Variations between signers, signs performed at different angles or distances from the camera
-     * Motion blur, low lighting, background clutter, hands leaving frame briefly
-   - Do NOT immediately fail or output "unknown" when a sign is slightly incorrect. Use surrounding context to infer what the user is communicating.
-   - Never invent information that has no reasonable connection to the input.
+CRITICAL RULES:
+1. Accuracy: Sign languages are real languages. Do NOT invent, assume, or fabricate a sign. Use ${signLanguage} consistently. Never mix signs from different sign languages.
+2. Distinguish whether user is making a single alphabet sign, fingerspelling multiple letters, performing a complete lexical sign, signing a phrase, or signing a sentence. Do NOT confuse an alphabet sign with a complete word sign.
+3. When an exact sign cannot be reliably identified, do NOT guess.
+4. Specific Guidance for Imperfect or Blurry Input:
+   - If camera image is blurry: uncertainty_reason: "Please hold your hand steady."
+   - If hand is too far away: uncertainty_reason: "Please move your hand closer."
+   - If multiple unclear hands/signs are detected: uncertainty_reason: "Please show one sign clearly."
+   - If confidence is low: uncertainty_reason: "Sign unclear — please repeat.", recognized_sign: "Unclear", confidence_level: "Low", sign_type: "Unknown".
+   - If no valid hand or gesture is present: recognized_sign: "No sign detected", confidence: 0, confidence_level: "Low", sign_type: "Unknown".
+5. Deduplication: One gesture held across frames yields ONE recognized sign.
+6. Provide sign_type as one of: "Alphabet", "Fingerspelling", "Word", "Phrase", "Sentence", "Unknown".
+7. Format output strictly according to these standards:
+   - Alphabet:
+     SIGN: [Letter]
+     TYPE: Alphabet
+     CONFIDENCE: [High/Medium/Low]
+   - Fingerspelled word:
+     SIGN: [Word in caps]
+     TYPE: Fingerspelling
+     CONFIDENCE: [High/Medium/Low]
+   - Word:
+     SIGN: [Word]
+     TYPE: Word
+     CONFIDENCE: [High/Medium/Low]
+   - Phrase:
+     SIGN: [Phrase]
+     TYPE: Phrase
+     CONFIDENCE: [High/Medium/Low]
+   - Sentence:
+     SIGN: [Sentence with punctuation]
+     TYPE: Sentence
+     CONFIDENCE: [High/Medium/Low]
+   - Unclear sign:
+     SIGN: Unclear
+     TYPE: Unknown
+     CONFIDENCE: Low
+   - No valid sign:
+     SIGN: No sign detected`;
 
-2. FIVE PARAMETERS OF SIGN IDENTIFICATION:
-   - Handshape: Differentiate finger configurations (A vs S vs T vs M; 1 vs D; B vs 4; V vs K; open-5 vs claw-5).
-   - Location: Identify landmark contact or proximity:
-     * Chin / Mouth: MOTHER (thumb on chin), WATER (W on chin), THANK-YOU (chin forward), EAT/FOOD (flattened O to mouth).
-     * Forehead: FATHER (thumb on forehead), KNOW (fingertips to temple), FORGET (swipe across forehead).
-     * Chest: PLEASE (open palm circle), SORRY (A-fist circle), FINE (open-5 thumb on chest), LIKE (pulling from chest), TIRED (bent hands drooping at chest).
-     * Neutral space: WANT (claw hands pulling inward), NEED (X-hook), MEET (index fingers touching), HELP (thumbs up on flat palm lifting).
-   - Movement: Single firm stroke vs double-tap vs continuous circle vs hold.
-   - Palm Orientation: Inward, forward, upward, downward.
-   - Non-Manual Markers (NMM): Eyebrows furrowed (WH-questions), eyebrows raised (Yes/No questions), head shake (negation), head nod (affirmation).
-
-3. CONTEXT-AWARE DISAMBIGUATION:
-   - Use short-term conversation context to disambiguate visually similar signs:
-     * Hospital / medical context -> DOCTOR or MEDICINE over TEACHER or CANDY.
-     * Food / dining context -> HOME or EAT over HOSPITAL or TIRED.
-     * Financial / work context -> BANK over BENCH.
-     * Morning / beverage context -> COFFEE or TEA.
-
-4. TEMPORAL DEDUPLICATION & REPETITION HANDLING:
-   - ONE sign performed across multiple video frames must yield ONE word, NOT repeated words ("hello hello hello").
-   - If signer is resting or hands are out of frame, output recognized_sign: "NONE", confidence: 0, is_reliable: false.
-
-5. NATURAL LANGUAGE OUTPUT:
-   - Output natural human language in ${targetLanguage}.
-   - Never output raw gesture labels ("+ + +"), technical sign codes, or confidence scores in english_translation.
-   - Preserve meaning strictly: NEVER invert negation (e.g. "ME NOT LIKE TEA" -> "I don't like tea.").`;
-
-    const promptText = `Analyze sequential video frame(s) for ${signLanguage}. Mode: ${mode}. Target Language: ${targetLanguage}.
+    const promptText = `Analyze camera image frame(s) for ${signLanguage} sign recognition. Target: ${targetLanguage}.
 ${telemetryInfo}
 ${contextPrompt}
 ${conversationPrompt}
-Return verified sign recognition, natural translation, and candidate alternatives.`;
+Return the identified sign, confidence level (High/Medium/Low), English translation, and standard formatted output.`;
 
     // In single_sign or isolated mode, prioritize gemini-3.8-flash for maximum visual accuracy
     const allModels = mode === 'single_sign' || mode === 'isolated'
@@ -287,6 +296,18 @@ Return verified sign recognition, natural translation, and candidate alternative
                 confidence: {
                   type: Type.NUMBER,
                   description: 'Confidence score from 0.00 to 1.00 strictly matching visual evidence.',
+                },
+                confidence_level: {
+                  type: Type.STRING,
+                  description: 'Confidence level category: "High", "Medium", or "Low".',
+                },
+                sign_type: {
+                  type: Type.STRING,
+                  description: 'Category of sign: "Alphabet", "Fingerspelling", "Word", "Phrase", "Sentence", or "Unknown".',
+                },
+                formatted_output: {
+                  type: Type.STRING,
+                  description: 'Strict format according to system instructions, e.g. "SIGN: Hello\\nTYPE: Word\\nCONFIDENCE: High" or "SIGN: No sign detected".',
                 },
                 is_reliable: {
                   type: Type.BOOLEAN,
@@ -379,47 +400,116 @@ Return verified sign recognition, natural translation, and candidate alternative
         return res.json({
           recognized_sign: 'NONE',
           recognized_signs: [],
-          english_translation: `Recognition service quota cooling down (${retryAfterSeconds}s). Resuming shortly...`,
+          english_translation: 'AI quota cooldown active. Recognition paused temporarily.',
           confidence: 0,
+          confidence_level: 'Low',
+          formatted_output: 'AI quota cooldown active. Recognition paused temporarily.',
           is_reliable: false,
           is_rate_limited: true,
           retry_after_seconds: retryAfterSeconds,
-          uncertainty_reason: 'API rate limit cooldown in effect.',
+          uncertainty_reason: 'AI quota cooldown active. Recognition paused temporarily.',
         });
       }
 
       return res.json({
         recognized_sign: 'NONE',
         recognized_signs: [],
-        english_translation: '[uncertain sign]',
+        english_translation: 'Sign unclear — please repeat.',
         confidence: 0,
+        confidence_level: 'Low',
+        formatted_output: 'SIGN: Unclear\nCONFIDENCE: Low',
         is_reliable: false,
-        uncertainty_reason: 'Awaiting clearer visual gesture.',
+        uncertainty_reason: 'Sign unclear — please repeat.',
       });
     }
 
-    const fallbackResult = {
+    const fallbackResult: Record<string, any> = {
       recognized_sign: 'NONE',
       recognized_signs: [],
-      english_translation: '[uncertain sign]',
+      english_translation: 'Sign unclear — please repeat.',
       confidence: 0.35,
+      confidence_level: 'Low',
+      sign_type: 'Unknown',
+      formatted_output: 'SIGN: Unclear\nTYPE: Unknown\nCONFIDENCE: Low',
       is_reliable: false,
-      uncertainty_reason: 'Awaiting clearer visual gesture.',
+      uncertainty_reason: 'Sign unclear — please repeat.',
       language: signLanguage,
       mode,
     };
 
-    const parsedResult = safeParseGeminiJson(responseText, fallbackResult);
+    const parsedResult: any = safeParseGeminiJson(responseText, fallbackResult);
     parsedResult.language = signLanguage;
     parsedResult.mode = mode;
+
+    // Enforce standardized confidence_level and formatted_output
+    const rawConf = typeof parsedResult.confidence === 'number' ? parsedResult.confidence : 0;
+    const confLevel: 'High' | 'Medium' | 'Low' =
+      parsedResult.confidence_level === 'High' || parsedResult.confidence_level === 'Medium' || parsedResult.confidence_level === 'Low'
+        ? parsedResult.confidence_level
+        : rawConf >= 0.75
+        ? 'High'
+        : rawConf >= 0.50
+        ? 'Medium'
+        : 'Low';
+    parsedResult.confidence_level = confLevel;
+
+    // Infer and validate sign_type
+    let inferredType: 'Alphabet' | 'Fingerspelling' | 'Word' | 'Phrase' | 'Sentence' | 'Unknown' = parsedResult.sign_type;
+    const signUpper = (parsedResult.recognized_sign || '').trim().toUpperCase();
+    const trans = (parsedResult.english_translation || '').trim();
+
+    if (!inferredType || !['Alphabet', 'Fingerspelling', 'Word', 'Phrase', 'Sentence', 'Unknown'].includes(inferredType)) {
+      if (
+        signUpper === 'NONE' ||
+        signUpper.includes('NO SIGN') ||
+        signUpper.includes('UNCLEAR') ||
+        confLevel === 'Low' ||
+        !parsedResult.is_reliable
+      ) {
+        inferredType = 'Unknown';
+      } else if (signUpper.length === 1 && /^[A-Z0-9]$/.test(signUpper)) {
+        inferredType = 'Alphabet';
+      } else if (parsedResult.is_sentence || trans.includes('.') || trans.includes('?') || trans.includes('!')) {
+        inferredType = 'Sentence';
+      } else if (trans.split(/\s+/).length > 1) {
+        inferredType = 'Phrase';
+      } else if (/^[A-Z]{2,6}$/.test(signUpper) && (signUpper === trans.toUpperCase() || parsedResult.is_fingerspelling)) {
+        inferredType = 'Fingerspelling';
+      } else {
+        inferredType = 'Word';
+      }
+    }
+    parsedResult.sign_type = inferredType;
+
+    // Enforce exact user-specified final formatted_output
+    if (
+      signUpper === 'NONE' ||
+      signUpper === 'NO SIGN DETECTED' ||
+      signUpper.includes('NO SIGN')
+    ) {
+      parsedResult.formatted_output = 'SIGN: No sign detected';
+    } else if (confLevel === 'Low' || !parsedResult.is_reliable || signUpper === 'UNCLEAR') {
+      parsedResult.formatted_output = 'SIGN: Unclear\nTYPE: Unknown\nCONFIDENCE: Low';
+    } else {
+      let displaySign = trans || parsedResult.recognized_sign;
+      if (inferredType === 'Alphabet') {
+        displaySign = signUpper.slice(0, 1);
+      } else if (inferredType === 'Fingerspelling') {
+        displaySign = trans.toUpperCase() || signUpper;
+      }
+      parsedResult.formatted_output = `SIGN: ${displaySign}\nTYPE: ${inferredType}\nCONFIDENCE: ${confLevel}`;
+    }
+
     return res.json(parsedResult);
   } catch (err: any) {
     console.error('Error during ASL recognition:', err);
     return res.json({
       recognized_sign: 'NONE',
       recognized_signs: [],
-      english_translation: '[uncertain sign]',
+      english_translation: 'Sign unclear — please repeat.',
       confidence: 0,
+      confidence_level: 'Low',
+      formatted_output: 'SIGN: Unclear\nCONFIDENCE: Low',
       is_reliable: false,
       uncertainty_reason: err.message || 'Service interruption',
     });

@@ -80,45 +80,71 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
         </div>
 
         {/* Status / Confidence Badge */}
-        {currentResult && (
-          <div className="flex items-center gap-2">
-            {isNotConfigured ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
-                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Not Configured</span>
-              </span>
-            ) : isConnectionError ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
-                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Backend Offline</span>
-              </span>
-            ) : currentResult.is_auto_translated ? (
-              <span
-                id="translation-auto-mapped-badge"
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-950/80 border border-purple-500/40 text-purple-300"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                <span>Auto-Mapped Conversational</span>
-              </span>
-            ) : isReliable ? (
-              <span
-                id="translation-confidence-high"
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/80 border border-emerald-500/30 text-emerald-300"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{confidenceScore}% Confidence</span>
-              </span>
-            ) : (
-              <span
-                id="translation-confidence-low"
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950/80 border border-amber-500/30 text-amber-300"
-              >
-                <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                <span>Low Confidence</span>
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {recognitionStatus === 'waiting_hand' && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-950/80 border border-blue-500/30 text-blue-300 animate-pulse">
+              <Hand className="w-3.5 h-3.5 text-blue-400" />
+              <span>Waiting for Hand</span>
+            </span>
+          )}
+          {recognitionStatus === 'holding' && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-950/80 border border-indigo-500/30 text-indigo-300">
+              <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Holding Gesture</span>
+            </span>
+          )}
+          {recognitionStatus === 'locked' && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/80 border border-emerald-500/30 text-emerald-300">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>1.5s Cooldown Active</span>
+            </span>
+          )}
+          {recognitionStatus === 'cooling_down' && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950/80 border border-amber-500/30 text-amber-300">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Quota Cooldown Active</span>
+            </span>
+          )}
+          {currentResult && (
+            <>
+              {isNotConfigured ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Not Configured</span>
+                </span>
+              ) : isConnectionError ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-950/80 border border-rose-500/30 text-rose-300">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Backend Offline</span>
+                </span>
+              ) : currentResult.is_auto_translated ? (
+                <span
+                  id="translation-auto-mapped-badge"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-950/80 border border-purple-500/40 text-purple-300"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Auto-Mapped Conversational</span>
+                </span>
+              ) : isReliable ? (
+                <span
+                  id="translation-confidence-high"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950/80 border border-emerald-500/30 text-emerald-300"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>CONFIDENCE: {currentResult.confidence_level || 'High'} ({confidenceScore}%)</span>
+                </span>
+              ) : (
+                <span
+                  id="translation-confidence-low"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950/80 border border-amber-500/30 text-amber-300"
+                >
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>CONFIDENCE: {currentResult.confidence_level || 'Low'}</span>
+                </span>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Main Text Content Area */}
@@ -176,42 +202,110 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
                     )}
                   </div>
                 </div>
-              ) : currentResult.is_rate_limited ? (
-                <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 space-y-2">
+              ) : currentResult.is_rate_limited || recognitionStatus === 'rate_limited' || recognitionStatus === 'cooling_down' ? (
+                <div className="p-5 rounded-2xl bg-amber-950/30 border border-amber-500/40 text-amber-200 space-y-3 shadow-lg">
                   <div className="flex items-center gap-2 font-bold text-sm text-amber-300">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>Gemini Quota Cooldown Active</span>
+                    <AlertCircle className="w-4 h-4 text-amber-400" />
+                    <span>Quota Cooldown Active</span>
                   </div>
-                  <p className="text-base sm:text-lg font-medium text-amber-100/90 leading-relaxed">
-                    {currentResult.english_translation || "API rate limit reached. Pausing momentarily to recharge..."}
+                  <p className="text-xl font-extrabold text-amber-100 leading-snug">
+                    AI quota cooldown active. Recognition paused temporarily.
                   </p>
                   <p className="text-xs text-amber-300/80">
-                    Tip: Continuous mode uses motion detection to optimize API quota. Ensure clear lighting and distinct hand gestures.
+                    The system automatically pauses during API cooldown to prevent quota exhaustion and will resume automatically once the timer expires.
                   </p>
                 </div>
               ) : isUncertain ? (
-                <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/30 text-amber-200 space-y-2">
+                <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/30 text-amber-200 space-y-3">
                   <div className="flex items-center gap-2 font-bold text-sm text-amber-300">
                     <AlertCircle className="w-4 h-4" />
-                    <span>Sign Needs Clarification</span>
+                    <span>Sign Unclear</span>
                   </div>
-                  <p className="text-base sm:text-lg font-medium text-amber-100/90 leading-relaxed">
-                    {currentResult.english_translation || "I'm not confident about that sign. Please try again."}
+                  <p className="text-base font-medium text-amber-100/90 leading-relaxed">
+                    {currentResult.uncertainty_reason || "Sign unclear — please repeat."}
                   </p>
-                  <p className="text-xs text-amber-300/80">
-                    Tip: Ensure good lighting, hold the sign steady for 1 second, and position your hands clearly within the frame.
-                  </p>
+                  <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 font-mono text-xs text-emerald-400 whitespace-pre-line">
+                    {currentResult.formatted_output || "SIGN: Unclear\nTYPE: Unknown\nCONFIDENCE: Low"}
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <div className="text-xs uppercase tracking-wider font-semibold text-slate-400">
-                    Recognized Meaning
-                  </div>
-                  <div
-                    id="translation-english-text"
-                    className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-snug break-words selection:bg-indigo-600"
-                  >
-                    "{currentResult.english_translation}"
+                <div className="space-y-4">
+                  {/* Prominent Sign Display Box matching User's Exact Specification */}
+                  {(() => {
+                    const signType = currentResult.sign_type || 'Word';
+                    const isSentence = signType === 'Sentence';
+                    const isAlphabet = signType === 'Alphabet';
+                    const isFingerspelling = signType === 'Fingerspelling';
+
+                    const primaryDisplay = isSentence
+                      ? `"${currentResult.english_translation}"`
+                      : `[${(currentResult.recognized_sign || currentResult.english_translation || '').toUpperCase()}]`;
+
+                    const englishLabel = isAlphabet ? 'English letter:' : 'English:';
+                    const englishValue = isAlphabet
+                      ? (currentResult.recognized_sign || currentResult.english_translation).slice(0, 1).toUpperCase()
+                      : isFingerspelling
+                      ? currentResult.english_translation.toUpperCase()
+                      : currentResult.english_translation;
+
+                    const signLang = currentResult.language || 'ISL';
+                    const confLevel = currentResult.confidence_level || (isReliable ? 'High' : 'Low');
+
+                    return (
+                      <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-xl space-y-3.5">
+                        {/* Prominent Header e.g. [HELLO] or "Hello. How are you?" */}
+                        <div
+                          id="translation-english-text"
+                          className="text-3xl sm:text-4xl font-extrabold text-indigo-300 tracking-tight font-mono break-words leading-tight"
+                        >
+                          {primaryDisplay}
+                        </div>
+
+                        {/* Structured Specification Attributes */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-800/80 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 font-medium">{englishLabel}</span>
+                            <span className="text-white font-bold tracking-wide">{englishValue}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 font-medium">Sign language:</span>
+                            <span className="text-indigo-400 font-bold">{signLang}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 font-medium">Type:</span>
+                            <span className="px-2.5 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              {signType}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400 font-medium">Confidence:</span>
+                            <span
+                              className={`px-2.5 py-0.5 rounded-md text-xs font-bold ${
+                                confLevel === 'High'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                  : confLevel === 'Medium'
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              }`}
+                            >
+                              {confLevel}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Standard Final Output Format Box */}
+                  <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800/90 font-mono text-xs space-y-1.5 shadow-inner">
+                    <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center justify-between">
+                      <span>FINAL OUTPUT FORMAT</span>
+                      <span className="text-indigo-400 font-semibold">{currentResult.language || 'ISL'}</span>
+                    </div>
+                    <div className="text-emerald-400 font-bold whitespace-pre-line leading-relaxed text-sm bg-slate-900/90 p-3 rounded-lg border border-slate-800">
+                      {currentResult.formatted_output ||
+                        `SIGN: ${currentResult.english_translation || currentResult.recognized_sign}\nTYPE: ${currentResult.sign_type || 'Word'}\nCONFIDENCE: ${currentResult.confidence_level || (isReliable ? 'High' : 'Low')}`}
+                    </div>
                   </div>
 
                   {/* Sign Gloss Badges */}
@@ -322,13 +416,16 @@ export const TranslationPanel: React.FC<TranslationPanelProps> = ({
                 <Hand className="w-5 h-5" />
               </div>
               <p className="text-sm font-semibold text-slate-300">
-                {isTranslating ? 'Ready for ASL Signs...' : 'Translation is Paused'}
+                {isTranslating ? 'Ready for Hand Signs...' : 'Translation is Paused'}
               </p>
               <p className="text-xs text-slate-400 max-w-xs">
                 {isTranslating
-                  ? 'Perform a sign within the camera frame. The AI will translate it into natural English text.'
-                  : 'Start camera and resume translation to begin interpreting ASL.'}
+                  ? 'Show hand signs clearly in frame. The event detector will recognize alphabets, words, phrases, or sentences.'
+                  : 'Start camera and resume translation to begin interpreting signs.'}
               </p>
+              <div className="p-2.5 bg-slate-950/80 rounded-lg border border-slate-800/80 font-mono text-xs text-slate-400 mt-2">
+                SIGN: No sign detected
+              </div>
             </div>
           )}
         </div>

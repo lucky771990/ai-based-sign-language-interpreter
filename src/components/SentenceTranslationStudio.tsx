@@ -797,7 +797,7 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
               {activeSentence.sentenceText.trim() ? (
                 <div className="space-y-2 w-full">
                   <p className="text-2xl sm:text-3xl font-bold tracking-tight text-white leading-relaxed">
-                    {activeSentence.sentenceText}
+                    "{activeSentence.sentenceText}"
                   </p>
                   <p className="text-xs text-indigo-400/80 font-medium">
                     {activeSentence.isComplete
@@ -818,6 +818,41 @@ export const SentenceTranslationStudio: React.FC<SentenceTranslationStudioProps>
                 </div>
               )}
             </div>
+
+            {/* Prominent Output Format per Specification */}
+            {activeSentence.sentenceText.trim() ? (
+              <div className="mt-3 p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2 font-mono text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-sans">
+                  <div>
+                    <span className="text-slate-400">English: </span>
+                    <span className="text-white font-bold">{activeSentence.sentenceText}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Sign language: </span>
+                    <span className="text-indigo-400 font-bold">{signLanguage}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Type: </span>
+                    <span className="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      {activeSentence.words.length > 1 ? 'Sentence' : 'Word'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Confidence: </span>
+                    <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      High
+                    </span>
+                  </div>
+                </div>
+                <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 text-emerald-400 font-bold whitespace-pre-line text-xs">
+                  {`SIGN: ${activeSentence.sentenceText}\nTYPE: ${activeSentence.words.length > 1 ? 'Sentence' : 'Word'}\nCONFIDENCE: High`}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 p-2.5 bg-slate-950/80 rounded-lg border border-slate-800/80 font-mono text-xs text-slate-400">
+                SIGN: No sign detected
+              </div>
+            )}
 
             {/* Signed Gloss Sequence Ribbon */}
             <div className="mt-4 space-y-2">

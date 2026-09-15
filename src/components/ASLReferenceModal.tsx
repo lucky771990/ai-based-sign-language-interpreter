@@ -29,13 +29,12 @@ export const ASLReferenceModal: React.FC<ASLReferenceModalProps> = ({
   if (!isOpen) return null;
 
   const categories = [
-    { id: 'all', label: 'All Signs' },
-    { id: 'greetings', label: 'Greetings' },
-    { id: 'courtesy', label: 'Courtesy' },
-    { id: 'questions', label: 'Questions' },
-    { id: 'common', label: 'Everyday' },
-    { id: 'emergency', label: 'Emergency' },
-    { id: 'alphabet', label: 'Alphabet / Fingerspelling' },
+    { id: 'all', label: 'All Vocabulary' },
+    { id: 'greetings', label: '👋 Greetings' },
+    { id: 'common', label: '😊 Everyday Words' },
+    { id: 'people', label: '👤 People' },
+    { id: 'phrases', label: '💬 Useful Phrases' },
+    { id: 'situations', label: '🏠 Everyday Situations' },
   ];
 
   const filteredSigns = ASL_REFERENCE_SIGNS.filter((item) => {
@@ -43,7 +42,10 @@ export const ASLReferenceModal: React.FC<ASLReferenceModalProps> = ({
       item.sign.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.handshape.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      item.category === selectedCategory ||
+      (selectedCategory === 'common' && (item.category === 'common' || item.category === 'courtesy' || item.category === 'emergency'));
     return matchesSearch && matchesCategory;
   });
 
@@ -146,6 +148,26 @@ export const ASLReferenceModal: React.FC<ASLReferenceModalProps> = ({
               <p className="text-xs text-slate-400 leading-relaxed pt-1 border-t border-slate-900">
                 {item.description}
               </p>
+
+              {item.signLanguageNotes && (
+                <div className="pt-1.5 border-t border-slate-900/80 space-y-1 text-[11px]">
+                  {item.signLanguageNotes.isl && (
+                    <div className="text-emerald-400/90 font-medium">
+                      <span className="font-bold text-emerald-300">🇮🇳 ISL:</span> {item.signLanguageNotes.isl}
+                    </div>
+                  )}
+                  {item.signLanguageNotes.asl && (
+                    <div className="text-blue-400/90">
+                      <span className="font-bold text-blue-300">🇺🇸 ASL:</span> {item.signLanguageNotes.asl}
+                    </div>
+                  )}
+                  {item.signLanguageNotes.bsl && (
+                    <div className="text-purple-400/90">
+                      <span className="font-bold text-purple-300">🇬🇧 BSL:</span> {item.signLanguageNotes.bsl}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="text-[11px] text-slate-400 italic">
                 Example: "{item.exampleSentence}"
